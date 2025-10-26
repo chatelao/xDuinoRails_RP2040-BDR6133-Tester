@@ -1,4 +1,4 @@
-# BDR6-133 Märklin Motor Driver
+# BDR-6133 Märklin Motor Driver
 
 This project describes the wiring and control of a digital Märklin motor using a BDR6-133 motor driver and a XIAO SEED RP2040 microcontroller.
 
