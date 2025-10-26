@@ -44,7 +44,9 @@ void update_motor_pwm() {
   pinMode(pwmBPin, INPUT);
   delayMicroseconds(100);
 
-  int measured_bemf = forward ? analogRead(bemfAPin) : analogRead(bemfBPin);
+  int bemfA = analogRead(bemfAPin);
+  int bemfB = analogRead(bemfBPin);
+  int measured_bemf = abs(bemfA - bemfB);
   int measured_speed = map(measured_bemf, 0, 1023, 0, 255);
   int error = target_speed - measured_speed;
   current_pwm = constrain(target_speed + (Kp * error), 0, max_speed);
