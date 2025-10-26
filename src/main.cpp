@@ -39,6 +39,20 @@ void setup() {
   Serial.begin(9600);
 }
 
+void update_motor_pwm() {
+  pinMode(pwmAPin, INPUT);
+  pinMode(pwmBPin, INPUT);
+  delayMicroseconds(100);
+
+  int bemfA = analogRead(bemfAPin);
+  int bemfB = analogRead(bemfBPin);
+  int measured_bemf = abs(bemfA - bemfB);
+  int measured_speed = map(measured_bemf, 0, 1023, 0, 255);
+  int error = target_speed - measured_speed;
+  current_pwm = constrain(target_speed + (Kp * error), 0, max_speed);
+  bemf_measured_this_cycle = true;
+}
+
 void loop() {
   unsigned long current_millis = millis();
   unsigned long current_micros = micros();
@@ -92,15 +106,6 @@ void loop() {
   }
 
   if (!bemf_measured_this_cycle && (current_micros - last_pwm_cycle_us > on_time_us)) {
-    pinMode(pwmAPin, INPUT);
-    pinMode(pwmBPin, INPUT);
-    bemf_measured_this_cycle = true;
-    delayMicroseconds(50);
-
-    // Corrected BEMF measurement: read the terminal that was NOT connected to ground.
-    int measured_bemf = forward ? analogRead(bemfAPin) : analogRead(bemfBPin);
-    int measured_speed = map(measured_bemf, 0, 1023, 0, 255);
-    int error = target_speed - measured_speed;
-    current_pwm = constrain(target_speed + (Kp * error), 0, max_speed);
+    update_motor_pwm();
   }
 }
