@@ -27,20 +27,16 @@ The components are connected as follows:
 ### Connection Diagram (Physical Layout)
 
 ```
-              +----------------------+
-              |  XIAO SEED RP2040    |
-              |      (Top View)      |
-              +----------------------+
- (BEMF A) ----| A0/D0     5V    |
- (BEMF B) ----| A1/D1     GND   |
-(PWM Fwd -> InA) ----| A2/D2     3V3   |
-(PWM Rev -> InB) ----| A3/D3     -     |
-              | D4        -     |
-              | D5        -     |
-              | D6        D7    |
-              | D8        D9    |
-              | D10       -     |
-              | -         -     |
-              | -         -     |
-              +----------------------+
+                     +----------------------+
+                     |  XIAO SEED RP2040    |
+                     |      (Top View)      |
+                     +----------------------+
+        (BEMF A) ----| A0/D0             5V |
+        (BEMF B) ----| A1/D1            GND |
+(PWM Fwd -> InA) ----| A2/D2            3V3 |
+(PWM Rev -> InB) ----| A3/D3            D10 |
+                     | D4                D9 |
+                     | D5                D8 |
+                     | D6                D7 |
+                     +----------------------+
 ```
