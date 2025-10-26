@@ -1,3 +1,5 @@
+#include <Arduino.h>
+
 // Define the pins used for motor control
 const int pwmPin = D0;       // PWM output for motor speed
 const int dirPin = D1;       // Digital output for motor direction
@@ -14,6 +16,10 @@ const float Kp = 0.5;
 
 // Global variable for motor state
 int target_speed = 0;
+
+void adjust_motor_speed();
+void ramp_speed(int start_target, int end_target);
+
 
 void setup() {
   // Set the pin modes

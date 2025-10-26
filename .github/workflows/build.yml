@@ -13,23 +13,24 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Setup Arduino CLI
-        uses: arduino/setup-arduino-cli@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-      - name: Install dependencies
+      - name: Install PlatformIO
         run: |
-          arduino-cli core update-index --additional-urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
-          arduino-cli core install seeed:rp2040 --additional-urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio
 
-      - name: Compile sketch
-        run: |
-          arduino-cli compile --fqbn seeed:rp2040:xiao motor_control/motor_control.ino --output-dir build
+      - name: Build project
+        run: pio run
 
       - name: Upload artifact
         if: github.event_name == 'release'
         uses: actions/upload-artifact@v4
         with:
           name: uf2-file
-          path: build/motor_control.ino.uf2
+          path: .pio/build/seeed_xiao_rp2040/firmware.uf2
