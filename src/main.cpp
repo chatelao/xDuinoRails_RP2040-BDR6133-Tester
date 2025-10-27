@@ -1,10 +1,10 @@
 #include <Arduino.h>
 
 // Corrected Pin Assignments
-const int pwmAPin = D2;      // PWM Forward (GPIO28)
-const int pwmBPin = D3;      // PWM Reverse (GPIO29)
-const int bemfAPin = A0;     // BEMF A (GPIO26)
-const int bemfBPin = A1;     // BEMF B (GPIO27)
+const int pwmAPin = D7;      // PWM Forward (OutA)
+const int pwmBPin = D8;      // PWM Reverse (OutB)
+const int bemfAPin = A3;     // BEMF A (bEMFA)
+const int bemfBPin = A2;     // BEMF B (bEMFB)
 const int statusLedPin = LED_BUILTIN; // Status LED
 
 // Motor control parameters
