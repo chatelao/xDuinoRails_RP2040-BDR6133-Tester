@@ -12,7 +12,13 @@ const int half_speed = 127;
 const int ramp_duration_ms = 3000;
 
 // Proportional control gain
-const float Kp = 0.5;
+const float Kp = 0.1;
+
+// Commutation pulse counting
+const int bemf_threshold = 500; // Threshold for detecting a pulse
+volatile int commutation_pulse_count = 0; // Use volatile for safe interrupt access
+float measured_speed_pps = 0.0; // Pulses per second
+bool last_bemf_state = false;
 
 // Software PWM parameters
 const int pwm_frequency = 1000; // Hz
@@ -47,7 +53,15 @@ void update_motor_pwm() {
   int bemfA = analogRead(bemfAPin);
   int bemfB = analogRead(bemfBPin);
   int measured_bemf = abs(bemfA - bemfB);
-  int measured_speed = map(measured_bemf, 0, 1023, 0, 255);
+
+  bool current_bemf_state = (measured_bemf > bemf_threshold);
+  if (current_bemf_state && !last_bemf_state) {
+    commutation_pulse_count++;
+  }
+  last_bemf_state = current_bemf_state;
+
+  // The speed calculation will be moved to the main loop
+  int measured_speed = map(measured_speed_pps, 0, 500, 0, 255);
   int error = target_speed - measured_speed;
   current_pwm = constrain(target_speed + (Kp * error), 0, max_speed);
   bemf_measured_this_cycle = true;
@@ -56,6 +70,20 @@ void update_motor_pwm() {
 void loop() {
   unsigned long current_millis = millis();
   unsigned long current_micros = micros();
+
+  // --- Speed calculation based on commutation pulses ---
+  static unsigned long last_speed_calc_ms = 0;
+  if (current_millis - last_speed_calc_ms >= 100) { // Calculate speed every 100ms
+    // Atomically read and reset the pulse counter
+    noInterrupts();
+    int pulses = commutation_pulse_count;
+    commutation_pulse_count = 0;
+    interrupts();
+
+    float elapsed_time_s = (current_millis - last_speed_calc_ms) / 1000.0;
+    measured_speed_pps = pulses / elapsed_time_s;
+    last_speed_calc_ms = current_millis;
+  }
 
   // --- High-level state machine for ramping and direction changes ---
   if (in_direction_change_delay) {
