@@ -5,6 +5,7 @@ const int pwmAPin = D2;      // PWM Forward (GPIO28)
 const int pwmBPin = D3;      // PWM Reverse (GPIO29)
 const int bemfAPin = A0;     // BEMF A (GPIO26)
 const int bemfBPin = A1;     // BEMF B (GPIO27)
+const int statusLedPin = LED_BUILTIN; // Status LED
 
 // Motor control parameters
 const int max_speed = 255;
@@ -42,6 +43,7 @@ void setup() {
   pinMode(pwmBPin, OUTPUT);
   pinMode(bemfAPin, INPUT);
   pinMode(bemfBPin, INPUT);
+  pinMode(statusLedPin, OUTPUT);
   Serial.begin(9600);
 }
 
@@ -67,7 +69,26 @@ void update_motor_pwm() {
   bemf_measured_this_cycle = true;
 }
 
+void update_status_light() {
+  unsigned long current_millis = millis();
+
+  if (in_direction_change_delay) {
+    // Fast blink (100ms interval)
+    digitalWrite(statusLedPin, (current_millis / 100) % 2);
+  } else if (!ramping_up && target_speed > 0) {
+    // Slow blink (500ms interval)
+    digitalWrite(statusLedPin, (current_millis / 500) % 2);
+  } else if (target_speed > 0) {
+    // Solid ON
+    digitalWrite(statusLedPin, HIGH);
+  } else {
+    // Solid OFF
+    digitalWrite(statusLedPin, LOW);
+  }
+}
+
 void loop() {
+  update_status_light();
   unsigned long current_millis = millis();
   unsigned long current_micros = micros();
 
