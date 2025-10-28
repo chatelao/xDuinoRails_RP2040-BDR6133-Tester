@@ -70,8 +70,8 @@ The components are connected as follows:
         (BEMF B) ----| A2/D2            3V3 |
         (BEMF A) ----| A3/D3            D10 |
                      | D4                D9 |
-                     | D5         D8 ----|---- (PWM Rev -> InB)
-                     | D6         D7 ----|---- (PWM Fwd -> InA)
+                     | D5            D8 ----|---- (PWM Rev -> InB)
+                     | D6            D7 ----|---- (PWM Fwd -> InA)
                      +----------------------+
 ```
 
