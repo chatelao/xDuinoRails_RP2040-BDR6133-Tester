@@ -69,9 +69,9 @@ The components are connected as follows:
                      | A1/D1            GND |
         (BEMF B) ----| A2/D2            3V3 |
         (BEMF A) ----| A3/D3            D10 |
-                     | D4                D9 |
-                     | D5            D8 ----|---- (PWM Rev -> InB)
-                     | D6            D7 ----|---- (PWM Fwd -> InA)
+        (DCC-RX) ----| D4                D9 |
+        (ACC-ACK)----| D5            D8 ----|---- (PWM Rev -> InB)
+     (Railcom-TX)----| D6            D7 ----|---- (PWM Fwd -> InA)
                      +----------------------+
 ```
 
