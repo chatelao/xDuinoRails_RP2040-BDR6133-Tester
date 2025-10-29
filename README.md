@@ -28,7 +28,7 @@ The control loop operates as follows:
 ```
             +------------------+     +------------------+     +------------------+
 Set-point   |                  |     |                  |     |                  |
-(Target ---->|    Controller    |----->|      Motor     |----->|      Motor     |----> Actual
+(Target --->|    Controller    |---->|      Motor       |---->|      Motor       |----> Actual
  Speed)     | (P-Regler)       | PWM |      Driver      | PWM |                  |      Speed
             |                  |     |    (BDR-6133)    |     |                  |
             +------------------+     +------------------+     +------------------+
