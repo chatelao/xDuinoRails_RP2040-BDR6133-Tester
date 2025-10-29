@@ -65,13 +65,13 @@ The components are connected as follows:
                      |  XIAO SEED RP2040    |
                      |      (Top View)      |
                      +----------------------+
-                     | A0/D0             5V |
+                     | A0/D0            5v  |
                      | A1/D1            GND |
-        (BEMF B) ----| A2/D2            3V3 |
+        (BEMF B) ----| A2/D2            3v3 |
         (BEMF A) ----| A3/D3            D10 |
-        (DCC-RX) ----| D4                D9 |
-       (ACC-ACK) ----| D5                D8 |---- (PWM Rev -> InB)
-    (Railcom-TX) ----| D6                D7 |---- (PWM Fwd -> InA)
+        (DCC-RX) ----| D4               D9  |
+       (ACC-ACK) ----| D5               D8  |---- (PWM Rev -> InB)
+    (Railcom-TX) ----| D6               D7  |---- (PWM Fwd -> InA)
                      +----------------------+
 ```
 
