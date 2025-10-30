@@ -28,9 +28,10 @@ jobs:
       - name: Build project
         run: pio run
 
-      - name: Upload artifact
+      - name: Upload Release Asset
         if: github.event_name == 'release'
-        uses: actions/upload-artifact@v4
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: uf2-file
-          path: .pio/build/seeed_xiao_rp2040/firmware.uf2
+          files: .pio/build/seeed_xiao_rp2040/firmware.uf2
