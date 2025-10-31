@@ -42,6 +42,18 @@ Set-point   |                  |     |                  |     |                 
                                         Feedback
 ```
 
+### Konzeptidee: Sanftanlauf-Routine
+
+Um hohe Einschaltströme beim Anfahren des Motors zu vermeiden, kann eine Sanftanlauf-Routine implementiert werden. Diese Routine würde die PWM-Tastrate schrittweise erhöhen, anstatt sofort auf den vom P-Regler berechneten Wert zu springen.
+
+**Funktionsweise:**
+
+1.  **Initialisierung:** Wenn der Motor gestartet wird, beginnt die PWM-Tastrate bei einem sehr niedrigen Wert (z.B. 10 von 255).
+2.  **Rampe:** Die Tastrate wird in jedem Steuerzyklus um einen kleinen Betrag erhöht, bis sie den vom P-Regler geforderten Wert erreicht.
+3.  **Übergabe an den Regler:** Sobald die Rampe abgeschlossen ist, übernimmt der P-Regler die volle Kontrolle über die PWM-Tastrate.
+
+Diese Methode stellt sicher, dass der Motor sanft anläuft, was die mechanische Belastung reduziert und elektrische Spitzen vermeidet.
+
 ## Wiring
 
 The components are connected as follows:
