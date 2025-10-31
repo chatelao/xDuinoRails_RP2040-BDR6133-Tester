@@ -20,6 +20,10 @@ const int statusLedPin = LED_BUILTIN; ///< Built-in LED for status indication.
 //== Motor Control Parameters ==
 const int max_speed = 255;  ///< Maximum target speed value, corresponds to max PWM duty cycle.
 
+//== Stall Detection Parameters ==
+const int stall_speed_threshold_pps = 10; ///< If speed is below this (in pulses/sec) while motor is active, it's considered stalled.
+const unsigned long stall_timeout_ms = 1000; ///< Time in ms motor must be stalled before triggering the stall state.
+
 //== Proportional Controller ==
 const float Kp = 0.1;       ///< Proportional gain for the P-controller.
 
@@ -43,7 +47,8 @@ enum MotorState {
     COAST_HIGH,   ///< Motor runs at max_speed for a fixed duration.
     RAMP_DOWN,    ///< Motor decelerates to 10% of max_speed.
     COAST_LOW,    ///< Motor runs at 10% speed for a fixed duration.
-    STOP          ///< Motor is stopped for a fixed duration before reversing.
+    STOP,         ///< Motor is stopped for a fixed duration before reversing.
+    MOTOR_STALLED ///< Motor has stalled and is now stopped.
 };
 MotorState current_state = RAMP_UP; ///< Current state of the machine.
 unsigned long state_start_ms = 0;   ///< Timestamp (millis) when the current state was entered.
@@ -138,6 +143,9 @@ void update_status_light() {
         case STOP:
             digitalWrite(statusLedPin, (current_millis / 100) % 2);
             break;
+        case MOTOR_STALLED:
+            digitalWrite(statusLedPin, (current_millis / 50) % 2); // Very fast blink
+            break;
         default:
             digitalWrite(statusLedPin, LOW);
             break;
@@ -172,55 +180,78 @@ void loop() {
     last_speed_calc_ms = current_millis;
   }
 
+  // --- Stall Detection Logic ---
+  static unsigned long stall_check_start_ms = 0;
+
+  // A stall can only occur if the motor is supposed to be moving but isn't.
+  if (target_speed > 0 && measured_speed_pps < stall_speed_threshold_pps) {
+    if (stall_check_start_ms == 0) { // If this is the start of a potential stall...
+      stall_check_start_ms = current_millis; // ...record the start time.
+    } else if (current_millis - stall_check_start_ms >= stall_timeout_ms) {
+      // If the condition persists long enough, trigger the stalled state.
+      current_state = MOTOR_STALLED;
+      state_start_ms = current_millis;
+      target_speed = 0; // Stop the motor immediately.
+    }
+  } else {
+    // If the motor is moving as expected or is supposed to be stopped, reset the timer.
+    stall_check_start_ms = 0;
+  }
+
   // --- High-level state machine for the test pattern ---
   unsigned long time_in_state = current_millis - state_start_ms;
 
   switch (current_state) {
     case RAMP_UP:
-      if (current_millis - last_ramp_update_ms >= ramp_step_delay_ms) {
-        last_ramp_update_ms = current_millis;
-        if (target_speed < max_speed) {
-          target_speed++;
-        } else {
-          current_state = COAST_HIGH;
-          state_start_ms = current_millis;
-        }
+     if (current_millis - last_ramp_update_ms >= ramp_step_delay_ms) {
+      last_ramp_update_ms = current_millis;
+      if (target_speed < max_speed) {
+        target_speed++;
+      } else {
+        current_state = COAST_HIGH;
+        state_start_ms = current_millis;
       }
-      break;
+     }
+     break;
 
     case COAST_HIGH:
-      if (time_in_state >= 3000) {
-        current_state = RAMP_DOWN;
-        state_start_ms = current_millis;
-      }
-      break;
+     if (time_in_state >= 3000) {
+      current_state = RAMP_DOWN;
+      state_start_ms = current_millis;
+     }
+     break;
 
     case RAMP_DOWN:
-      if (current_millis - last_ramp_update_ms >= ramp_step_delay_ms) {
-        last_ramp_update_ms = current_millis;
-        if (target_speed > max_speed * 0.1) {
-          target_speed--;
-        } else {
-          current_state = COAST_LOW;
-          state_start_ms = current_millis;
-        }
+     if (current_millis - last_ramp_update_ms >= ramp_step_delay_ms) {
+      last_ramp_update_ms = current_millis;
+      if (target_speed > max_speed * 0.1) {
+        target_speed--;
+      } else {
+        current_state = COAST_LOW;
+        state_start_ms = current_millis;
       }
-      break;
+     }
+     break;
 
     case COAST_LOW:
-      if (time_in_state >= 3000) {
-        current_state = STOP;
-        state_start_ms = current_millis;
-        target_speed = 0; // Ensure motor is stopped
-      }
-      break;
+     if (time_in_state >= 3000) {
+      current_state = STOP;
+      state_start_ms = current_millis;
+      target_speed = 0; // Ensure motor is stopped
+     }
+     break;
 
     case STOP:
-      if (time_in_state >= 2000) {
-        forward = !forward; // Change direction
-        current_state = RAMP_UP;
-        state_start_ms = current_millis;
-      }
+     if (time_in_state >= 2000) {
+      forward = !forward; // Change direction
+      current_state = RAMP_UP;
+      state_start_ms = current_millis;
+     }
+     break;
+    case MOTOR_STALLED:
+      // Motor is stopped and remains in this state.
+      // The LED will blink rapidly to indicate the error.
+      // A reset is required to clear this state.
       break;
   }
 
