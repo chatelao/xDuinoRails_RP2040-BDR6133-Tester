@@ -40,8 +40,10 @@ const int max_speed = 255;  ///< Maximum target speed value, corresponds to max 
 const int stall_speed_threshold_pps = 10; ///< If speed is below this (in pulses/sec) while motor is active, it's considered stalled.
 const unsigned long stall_timeout_ms = 1000; ///< Time in ms motor must be stalled before triggering the stall state.
 
-//== Proportional Controller ==
-const float Kp = 0.1;       ///< Proportional gain for the P-controller.
+//== Proportional-Integral Controller ==
+const float Kp = 0.1;       ///< Proportional gain for the PI-controller.
+const float Ki = 0.1;       ///< Integral gain for the PI-controller.
+volatile float integral_error = 0.0; ///< Accumulated error for the integral term.
 
 //== BEMF Pulse Counting ==
 const int bemf_threshold = 500; ///< ADC value threshold for detecting a commutation pulse.
@@ -122,13 +124,19 @@ int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
   }
   last_bemf_state = current_bemf_state;
 
-  // 5. Run the P-controller
+  // 5. Run the PI-controller
   // Note: Speed calculation is done in the main loop to avoid float math here.
   int measured_speed = map(measured_speed_pps, 0, 500, 0, 255); // Approximate mapping
   int error = target_speed - measured_speed;
 
-  // Calculate new PWM value and ensure it's within bounds
-  int new_pwm = constrain(target_speed + (Kp * error), 0, max_speed);
+  // Conditional Integration: only accumulate error if the output is not saturated.
+  if (current_pwm < max_speed) {
+    integral_error += error;
+  }
+
+  // Calculate new PWM value with PI controller and ensure it's within bounds
+  int adjustment = (Kp * error) + (Ki * integral_error);
+  int new_pwm = constrain(target_speed + adjustment, 0, max_speed);
 
   // Update controller action state
   if (new_pwm > current_pwm) {
@@ -292,7 +300,6 @@ void update_status_light() {
 void loop() {
   update_status_light();
   unsigned long current_millis = millis();
-  unsigned long current_micros = micros();
 
   // --- Speed calculation based on commutation pulses ---
   static unsigned long last_speed_calc_ms = 0;
@@ -366,6 +373,7 @@ void loop() {
       current_state = STOP;
       state_start_ms = current_millis;
       target_speed = 0; // Ensure motor is stopped
+      integral_error = 0.0; // Reset integral error when stopping
      }
      break;
 
@@ -379,6 +387,7 @@ void loop() {
     case CHANGE_DIRECTION:
      if (time_in_state >= 500) { // A brief 500ms delay for the fast blink
         forward = !forward; // Change direction
+        integral_error = 0.0; // Reset integral error on direction change
         current_state = RAMP_UP;
         state_start_ms = current_millis;
      }
