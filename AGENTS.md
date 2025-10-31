@@ -1,76 +1,76 @@
-# 🤖 Jules: Build- & Test-Agent
+# 🤖 Jules: Build & Test Agent
 
-Dies ist die Dokumentation für "Jules", unseren automatisierten CI/CD-Prozess zur Qualitätssicherung der [Name Ihrer Arduino-Bibliothek].
+This is the documentation for "Jules", our automated CI/CD process for quality assurance of the [Name of your Arduino library].
 
-Der Agent ist dafür verantwortlich:
-* Den Code-Stil zu prüfen (Linting).
-* Die Bibliothek für verschiedene Zielplattformen zu kompilieren (Build).
-* Unit-Tests auf einer nativen Plattform auszuführen (Test).
-* (Optional) Releases zu erstellen und zu veröffentlichen.
+The agent is responsible for:
+* Checking the code style (Linting).
+* Compiling the library for various target platforms (Build).
+* Running unit tests on a native platform (Test).
+* (Optional) Creating and publishing releases.
 
 ## Stack
 
-* **Build-System:** [PlatformIO](https://platformio.org/)
-* **CI-Plattform:** [GitHub Actions](https://github.com/features/actions) (oder GitLab CI, Jenkins etc.)
-* **Test-Framework:** [PlatformIO Unit Testing](https://docs.platformio.org/en/latest/advanced/unit-testing/index.html) (meist mit [Unity](https://github.com/ThrowTheSwitch/Unity))
-* **Linting:** `pio check` (mit `clang-tidy` und `cppcheck`)
+* **Build System:** [PlatformIO](https://platformio.org/)
+* **CI Platform:** [GitHub Actions](https://github.com/features/actions) (or GitLab CI, Jenkins etc.)
+* **Test Framework:** [PlatformIO Unit Testing](https://docs.platformio.org/en/latest/advanced/unit-testing/index.html) (usually with [Unity](https://github.com/ThrowTheSwitch/Unity))
+* **Linting:** `pio check` (with `clang-tidy` and `cppcheck`)
 
 ---
 
-## 🛠️ Lokaler Build & Test
+## 🛠️ Local Build & Test
 
-Um die CI-Schritte lokal zu replizieren, bevor Sie Code pushen:
+To replicate the CI steps locally before pushing code:
 
-1.  **Abhängigkeiten installieren:**
+1.  **Install Dependencies:**
     ```bash
     pip install platformio
-    # Ggf. C++ Compiler für native Tests
-    # (z.B. build-essential unter Linux, Xcode Command Line Tools unter macOS)
+    # If necessary, C++ compiler for native tests
+    # (e.g., build-essential under Linux, Xcode Command Line Tools under macOS)
     ```
 
-2.  **Linting (Code-Stil prüfen):**
+2.  **Linting (Check Code Style):**
     ```bash
     pio check --fail-on-defect
     ```
 
-3.  **Alle Umgebungen bauen:**
-    * Dies kompiliert den Code für alle in `platformio.ini` definierten Boards (z.B. `uno`, `esp32`).
+3.  **Build All Environments:**
+    * This compiles the code for all boards defined in `platformio.ini` (e.g., `uno`, `esp32`).
     ```bash
     pio run
     ```
 
-4.  **Unit-Tests ausführen (Der wichtigste Schritt):**
-    * Dies kompiliert und führt die Tests in der `native` Umgebung aus.
+4.  **Run Unit Tests (The most important step):**
+    * This compiles and runs the tests in the `native` environment.
     ```bash
     pio test -e native
     ```
 
 ---
 
-## 🔬 Test-Strategie (Robustheit)
+## 🔬 Test Strategy (Robustness)
 
-Unser Ziel ist es, die Logik der Bibliothek **unabhängig von der physischen Hardware** robust zu testen.
+Our goal is to robustly test the library's logic **independently of the physical hardware**.
 
-### 1. Native Unit-Tests (`env:native`)
+### 1. Native Unit Tests (`env:native`)
 
-* Wir verwenden eine spezielle PlatformIO-Umgebung `[env:native]`.
-* Diese kompiliert den Code als normales C++ Programm für Ihren PC (Host-System), nicht für einen Mikrocontroller.
-* **Vorteil:** Tests laufen extrem schnell (Sekunden statt Minuten) und können in jeder CI-Pipeline (wie GitHub Actions) ohne angeschlossene Hardware ausgeführt werden.
+* We use a special PlatformIO environment `[env:native]`.
+* This compiles the code as a normal C++ program for your PC (host system), not for a microcontroller.
+* **Advantage:** Tests run extremely fast (seconds instead of minutes) and can be executed in any CI pipeline (like GitHub Actions) without connected hardware.
 
-### 2. Mocking (Hardware-Abstraktion)
+### 2. Mocking (Hardware Abstraction)
 
-* Um Arduino-spezifische Funktionen (z.B. `digitalWrite`, `millis()`, `Wire.h`) in der `native` Umgebung testen zu können, verwenden wir **Mocks**.
-* **Wie:** Wir nutzen C++ Präprozessor-Makros (`#ifdef NATIVE_TEST`). Wenn dieses Flag gesetzt ist, wird statt der echten Arduino-Header eine "Fake"-Version (Mock) eingebunden, die das Verhalten simuliert oder aufzeichnet.
-* **Beispiel (`test/mocks/Arduino.h`):**
+* To test Arduino-specific functions (e.g., `digitalWrite`, `millis()`, `Wire.h`) in the `native` environment, we use **mocks**.
+* **How:** We use C++ preprocessor macros (`#ifdef NATIVE_TEST`). When this flag is set, a "fake" version (mock) is included instead of the real Arduino header, which simulates or records the behavior.
+* **Example (`test/mocks/Arduino.h`):**
     ```cpp
     #ifndef ARDUINO_MOCK_H
     #define ARDUINO_MOCK_H
 
-    // Mock für millis()
+    // Mock for millis()
     extern uint32_t mock_millis_value;
-    uint32_t millis(void); // Im .cpp-File: return mock_millis_value;
+    uint32_t millis(void); // In the .cpp file: return mock_millis_value;
 
-    // Mock für digitalWrite()
+    // Mock for digitalWrite()
     extern int mock_last_pin_written;
     extern int mock_last_value_written;
     void digitalWrite(int pin, int value);
@@ -78,27 +78,27 @@ Unser Ziel ist es, die Logik der Bibliothek **unabhängig von der physischen Har
     #endif
     ```
 
-### 3. Test-Coverage
+### 3. Test Coverage
 
-* Wir streben eine hohe Testabdeckung an. Alle Kernlogik-Pfade sollten durch Unit-Tests abgedeckt sein.
+* We aim for high test coverage. All core logic paths should be covered by unit tests.
 
 ---
 
-## 🚀 CI-Pipeline (.github/workflows/main.yml)
+## 🚀 CI Pipeline (.github/workflows/main.yml)
 
-Die Pipeline wird bei jedem **Push** und **Pull Request** ausgelöst und führt folgende Schritte aus:
+The pipeline is triggered on every **push** and **pull request** and executes the following steps:
 
-1.  **`Lint`**: Führt `pio check` aus. Schlägt fehl bei Stil-Verletzungen.
+1.  **`Lint`**: Runs `pio check`. Fails on style violations.
 2.  **`Unit-Test (native)`**:
-    * Installiert Python & PlatformIO.
-    * Führt `pio test -e native` aus.
-    * Dies ist der wichtigste Gatekeeper. Wenn die Tests fehlschlagen, wird der PR blockiert.
+    * Installs Python & PlatformIO.
+    * Runs `pio test -e native`.
+    * This is the most important gatekeeper. If the tests fail, the PR is blocked.
 3.  **`Build (Matrix)`**:
-    * Führt `pio run` parallel auf einer **Matrix** von verschiedenen Plattformen aus (z.B. `atmelavr`, `espressif32`, `stmicroelectronics`).
-    * **Zweck:** Stellt sicher, dass der Code für alle unterstützten Mikrocontroller fehlerfrei kompiliert.
+    * Runs `pio run` in parallel on a **matrix** of different platforms (e.g., `atmelavr`, `espressif32`, `stmicroelectronics`).
+    * **Purpose:** Ensures that the code compiles without errors for all supported microcontrollers.
 
 ```yaml
-# Beispielausschnitt für .github/workflows/main.yml
+# Example snippet for .github/workflows/main.yml
 jobs:
   test_native:
     name: "Unit-Test (Native)"
@@ -116,10 +116,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Definieren Sie hier Ihre Ziel-Envs aus der platformio.ini
+        # Define your target envs from platformio.ini here
         platform_env: [uno, esp32_dev, nucleo_f401re]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
       - run: pip install platformio
       - run: pio run -e ${{ matrix.platform_env }}
+```
