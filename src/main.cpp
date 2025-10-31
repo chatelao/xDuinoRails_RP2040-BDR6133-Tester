@@ -5,10 +5,12 @@
  * This firmware implements a closed-loop speed control system for a DC motor
  * using a XIAO RP2040 and a BDR-6133 H-bridge driver. Speed is measured by
  * counting back-EMF (BEMF) commutation pulses. A proportional controller
- * adjusts the motor power via a non-blocking, software-generated PWM signal.
- * The system also includes a state machine to run an automatic test pattern.
+ * adjusts the motor power via a non-blocking, hardware-accelerated PWM signal
+ * using the RP2040's timers. The system also includes a state machine to
+ * run an automatic test pattern.
  */
 #include <Arduino.h>
+#include "pico/time.h"
 
 //== Pin Definitions ==
 const int pwmAPin = D7;      ///< Pin for PWM Forward direction (connects to InA).
@@ -57,38 +59,21 @@ const int ramp_step_delay_ms = 20; ///< Delay between speed steps during ramps.
 
 //== Global Motor & PWM State Variables ==
 int target_speed = 0; ///< The desired speed for the motor, set by the state machine.
-int current_pwm = 0;  ///< The current PWM duty cycle (0-255), calculated by the P-controller.
+volatile int current_pwm = 0;  ///< The current PWM duty cycle (0-255), calculated by the P-controller. Volatile for interrupt access.
 bool forward = true;  ///< Current direction of the motor. true for forward, false for reverse.
-unsigned long last_pwm_cycle_us = 0; ///< Timestamp (micros) of the start of the last PWM cycle.
-bool bemf_measured_this_cycle = false; ///< Flag to ensure BEMF is measured only once per PWM cycle.
+struct repeating_timer pwm_timer; ///< Holds the repeating timer instance for the PWM cycle.
 
 /**
- * @brief Initializes hardware pins and serial communication.
+ * @brief Timer callback for the PWM OFF phase.
  *
- * This function is called once at startup. It sets the pinMode for all connected
- * pins and starts the serial port at 9600 baud.
- */
-void setup() {
-  pinMode(pwmAPin, OUTPUT);
-  pinMode(pwmBPin, OUTPUT);
-  pinMode(bemfAPin, INPUT);
-  pinMode(bemfBPin, INPUT);
-  pinMode(statusLedPin, OUTPUT);
-  Serial.begin(9600);
-}
-
-/**
- * @brief Measures BEMF, counts pulses, and runs the P-controller.
+ * This function is scheduled by the ON-phase callback. It coasts the motor,
+ * waits, measures BEMF, and runs the P-controller. It returns 0 because it's
+ * a one-shot alarm and should not be re-scheduled automatically.
  *
- * This function is called during the OFF phase of each software PWM cycle.
- * It performs the following steps:
- * 1. Puts the H-bridge in a high-impedance state (coasting).
- * 2. Waits 100µs for electrical noise to settle.
- * 3. Reads the differential BEMF voltage from the ADC pins.
- * 4. Detects the rising edge of a commutation pulse and increments the counter.
- * 5. Calculates the control error and the new PWM value using the P-controller.
+ * @param alarm_id The ID of the alarm that triggered.
+ * @return 0
  */
-void update_motor_pwm() {
+int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
   // 1. Put H-Bridge into high-impedance state to measure BEMF
   pinMode(pwmAPin, INPUT);
   pinMode(pwmBPin, INPUT);
@@ -103,9 +88,11 @@ void update_motor_pwm() {
   // 4. Detect rising edge of a commutation pulse
   bool current_bemf_state = (measured_bemf > bemf_threshold);
   if (current_bemf_state && !last_bemf_state) {
-    noInterrupts();
+    // This is accessed by the main loop, so it needs to be atomic.
+    // However, we are in an interrupt, so noInterrupts() is not the right tool.
+    // For a single-core MCU and a single-instruction increment, it's often okay,
+    // but a proper atomic operation would be better in a multi-core scenario.
     commutation_pulse_count++;
-    interrupts();
   }
   last_bemf_state = current_bemf_state;
 
@@ -113,9 +100,67 @@ void update_motor_pwm() {
   // Note: Speed calculation is done in the main loop to avoid float math here.
   int measured_speed = map(measured_speed_pps, 0, 500, 0, 255); // Approximate mapping
   int error = target_speed - measured_speed;
-  current_pwm = constrain(target_speed + (Kp * error), 0, max_speed);
 
-  bemf_measured_this_cycle = true; // Mark BEMF as measured for this cycle
+  // Calculate new PWM value and ensure it's within bounds
+  int new_pwm = constrain(target_speed + (Kp * error), 0, max_speed);
+  current_pwm = new_pwm; // Update the volatile PWM value
+
+  return 0; // Does not repeat
+}
+
+/**
+ * @brief Timer callback for the PWM ON phase.
+ *
+ * This function is called by a repeating hardware timer. It drives the motor
+ * for the ON portion of the PWM cycle and schedules the one-shot OFF-phase
+ * callback.
+ *
+ * @param t A pointer to the repeating_timer_t structure.
+ * @return true to continue the repeating timer.
+ */
+bool pwm_on_callback(struct repeating_timer *t) {
+  // Read the latest PWM value. On a 32-bit core, reading a volatile int is atomic.
+  int pwm_val = current_pwm;
+
+  // Calculate the ON time for this cycle
+  long on_time_us = map(pwm_val, 0, 255, 0, pwm_period_us);
+
+  // Only drive the motor if there is a non-zero ON time
+  if (on_time_us > 0) {
+    // Set pins to OUTPUT to drive the H-bridge
+    pinMode(pwmAPin, OUTPUT);
+    pinMode(pwmBPin, OUTPUT);
+    if (forward) {
+      digitalWrite(pwmAPin, HIGH);
+      digitalWrite(pwmBPin, LOW);
+    } else {
+      digitalWrite(pwmAPin, LOW);
+      digitalWrite(pwmBPin, HIGH);
+    }
+  }
+
+  // Schedule the OFF callback to execute after the ON time.
+  // If on_time is 0, this will effectively be scheduled for "now",
+  // which is fine. The BEMF measurement will happen immediately.
+  add_alarm_in_us(on_time_us, pwm_off_callback, NULL, true);
+
+  return true; // Keep the repeating timer going
+}
+
+/**
+ * @brief Initializes hardware pins, serial communication, and hardware timers.
+ *
+ * This function is called once at startup. It sets up ADC and status pins,
+ * starts serial, and configures the repeating timer for the PWM cycle.
+ */
+void setup() {
+  pinMode(bemfAPin, INPUT);
+  pinMode(bemfBPin, INPUT);
+  pinMode(statusLedPin, OUTPUT);
+  Serial.begin(9600);
+
+  // Initialize the hardware timer for the PWM base frequency
+  add_repeating_timer_us(pwm_period_us, pwm_on_callback, NULL, &pwm_timer);
 }
 
 /**
@@ -255,34 +300,8 @@ void loop() {
       break;
   }
 
-  // --- Low-level non-blocking software PWM and BEMF measurement ---
-  unsigned long time_since_cycle_start = current_micros - last_pwm_cycle_us;
-  long on_time_us = map(current_pwm, 0, 255, 0, pwm_period_us);
-
-  // Check if it's time to start a new PWM cycle
-  if (time_since_cycle_start >= pwm_period_us) {
-    last_pwm_cycle_us = current_micros;
-    time_since_cycle_start = 0; // Reset for the new cycle
-    bemf_measured_this_cycle = false;
-  }
-
-  // Determine whether we are in the ON or OFF portion of the PWM pulse
-  if (time_since_cycle_start < on_time_us) {
-    // --- ON Portion: Drive the motor ---
-    pinMode(pwmAPin, OUTPUT);
-    pinMode(pwmBPin, OUTPUT);
-    if (forward) {
-      digitalWrite(pwmAPin, HIGH);
-      digitalWrite(pwmBPin, LOW);
-    } else {
-      digitalWrite(pwmAPin, LOW);
-      digitalWrite(pwmBPin, HIGH);
-    }
-  } else {
-    // --- OFF Portion: Coast and measure BEMF ---
-    if (!bemf_measured_this_cycle) {
-      update_motor_pwm(); // This function sets pins to INPUT and measures
-      bemf_measured_this_cycle = true;
-    }
-  }
+  // With the hardware timer handling the PWM and BEMF measurement,
+  // the main loop is now much simpler and only needs to manage the
+  // high-level state machine and speed calculations. The CPU load is
+  // significantly reduced.
 }
