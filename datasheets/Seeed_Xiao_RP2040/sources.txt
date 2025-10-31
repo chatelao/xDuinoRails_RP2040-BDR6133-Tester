@@ -1,0 +1,9 @@
+URL (Wiki): https://wiki.seeedstudio.com/XIAO-RP2040/
+URL (Schematic): https://files.seeedstudio.com/wiki/XIAO-RP2040/res/Seeed-Studio-XIAO-RP2040-v1.3.pdf
+
+Proposed Filename (Wiki): Seeed-Studio-XIAO-RP2040-Wiki.md
+Proposed Filename (Schematic): Seeed-Studio-XIAO-RP2040-Schematic.pdf
+
+Original Filename (Schematic): Seeed-Studio-XIAO-RP2040-v1.3.pdf
+
+Note: Automatic text conversion for the schematic PDF failed due to the nature of the file. Please download the PDF manually from the URL above.

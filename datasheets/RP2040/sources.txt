@@ -1,0 +1,4 @@
+URL: https://www.raspberrypi.com/products/rp2040/
+Proposed Filename: RP2040-Datasheet.pdf
+Original Filename: N/A
+Note: Please download the PDF manually from the URL above. You may need to click a "Read the datasheet" link on the page.

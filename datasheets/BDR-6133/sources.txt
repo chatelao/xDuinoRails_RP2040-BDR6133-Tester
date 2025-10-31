@@ -1,0 +1,4 @@
+URL: https://jlcpcb.com/api/file/downloadByFileSystemAccessId/8588902936978337792
+Proposed Filename: BDR-6133-Datasheet.pdf
+Original Filename: 8588902936978337792.pdf
+Note: Please download the PDF manually from the URL above.
