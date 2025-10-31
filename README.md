@@ -2,6 +2,8 @@
 
 This project describes the wiring and control of a digital Märklin motor using a BDR6-133 motor driver and a XIAO SEED RP2040 microcontroller.
 
+**Für eine vollständige und detaillierte technische Beschreibung, eine "Erste Schritte"-Anleitung und eine Anleitung zur Fehlerbehebung, lesen Sie bitte die [ERWEITERTE DOKUMENTATION](DOKUMENTATION.md).**
+
 ## Control System
 
 This project uses a **closed-loop control system** to regulate the motor's speed. The system is based on measuring the motor's back-EMF (BEMF) to determine its actual speed and then adjusting the power delivered to the motor via Pulse Width Modulation (PWM) to match a target speed.
