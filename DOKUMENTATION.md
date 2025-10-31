@@ -134,6 +134,95 @@ Der `Kp`-Wert (`const float Kp = 0.1;` in `main.cpp`) bestimmt, wie stark der Re
 
 Eine gute Methode zur Abstimmung ist, mit einem kleinen Wert (z.B. 0.05) zu beginnen und ihn schrittweise zu erhöhen, bis das System beginnt, instabil zu werden. Wählen Sie dann einen Wert, der etwas unterhalb dieser Schwelle liegt.
 
+### Layered Controller Diagram
+
++--------------------------------------------------------------------------------------------------+
+| Layer 1: High-Level State Machine (Logic in loop())                                              |
+|--------------------------------------------------------------------------------------------------|
+|   Inputs:                                                                                        |
+|     - `millis()` for timing state durations (e.g., COAST_HIGH for 3s)                            |
+|   Logic:                                                                                         |
+|     - `switch (current_state)` manages transitions:                                              |
+|       RAMP_UP -> COAST_HIGH -> RAMP_DOWN -> COAST_LOW -> STOP -> (reverse) -> RAMP_UP ...         |
+|     - Determines the desired speed for the motor.                                                |
+|   Outputs:                                                                                       |
+|     - `int target_speed` (0-255)  -> To Layer 2                                                  |
++--------------------------------------------------------------------------------------------------+
+             |
+             | `target_speed`
+             v
++--------------------------------------------------------------------------------------------------+
+| Layer 2: Proportional Controller (Logic in pwm_off_callback())                                   |
+|--------------------------------------------------------------------------------------------------|
+|   Inputs:                                                                                        |
+|     - `int target_speed` (from Layer 1)                                                          |
+|     - `float measured_speed_pps` (from Feedback Loop)                                            |
+|   Constants:                                                                                     |
+|     - `const float Kp = 0.1` (Proportional Gain)                                                 |
+|   Logic:                                                                                         |
+|     1. `error = target_speed - measured_speed` (approx. mapping)                                 |
+|     2. `new_pwm = constrain(target_speed + (Kp * error), 0, max_speed)`                          |
+|   Outputs:                                                                                       |
+|     - `volatile int current_pwm` (0-255) -> To Layer 3                                           |
++--------------------------------------------------------------------------------------------------+
+             |
+             | `current_pwm`
+             v
++--------------------------------------------------------------------------------------------------+
+| Layer 3: PWM & BEMF Hardware Abstraction (RP2040 Hardware Timers)                                |
+|--------------------------------------------------------------------------------------------------|
+|   Setup:                                                                                         |
+|     - `add_repeating_timer_us(1000, pwm_on_callback, ...)` -> Establishes 1kHz base frequency     |
+|   Logic (executed every 1ms):                                                                    |
+|     1. `pwm_on_callback`:                                                                        |
+|        - Reads `current_pwm`.                                                                    |
+|        - Calculates `on_time_us`.                                                                |
+|        - Drives H-Bridge (sets pins to OUTPUT, HIGH/LOW).                                        |
+|        - Schedules `pwm_off_callback` via `add_alarm_in_us(on_time_us, ...)`.                    |
+|     2. `pwm_off_callback`:                                                                       |
+|        - Coasts H-Bridge (sets pins to INPUT).                                                   |
+|        - `delayMicroseconds(100)`.                                                               |
+|        - Triggers BEMF ADC reading.                                                              |
+|   Outputs:                                                                                       |
+|     - Digital HIGH/LOW signals on `pwmAPin` (D7) / `pwmBPin` (D8) -> To Layer 4                  |
+|     - ADC read trigger on `bemfAPin` (A3) / `bemfBPin` (A2)       -> To Layer 4                  |
++--------------------------------------------------------------------------------------------------+
+             |                                       ^
+             | PWM Signals                           | BEMF Voltage
+             v                                       |
++--------------------------------------------------------------------------------------------------+
+| Layer 4: Physical Hardware                                                                       |
+|--------------------------------------------------------------------------------------------------|
+|   Components:                                                                                    |
+|     - XIAO RP2040: Microcontroller                                                               |
+|     - BDR-6133 H-Bridge: Motor Driver                                                            |
+|       - Takes `InA`/`InB` as input, drives motor at `OutA`/`OutB`.                                |
+|     - Märklin Motor: The actuator, produces rotation and BEMF.                                   |
+|     - Voltage Dividers (6.8k/1k): Scale BEMF voltage for ADC.                                    |
+|   Outputs:                                                                                       |
+|     - Motor Rotation                                                                             |
+|     - BEMF Voltage from motor terminals -> To Feedback Loop                                      |
++--------------------------------------------------------------------------------------------------+
+             ^
+             |
+             +-------------------------------------------------------------------------------------+
+                                                   |
++--------------------------------------------------------------------------------------------------+
+| Feedback Loop                                                                                    |
+|--------------------------------------------------------------------------------------------------|
+|   Inputs:                                                                                        |
+|     - BEMF voltage from Layer 4 motor terminals.                                                 |
+|   Logic:                                                                                         |
+|     1. ADC reads scaled voltage: `bemfA = analogRead(A3)`, `bemfB = analogRead(A2)`.              |
+|     2. Differential measurement: `measured_bemf = abs(bemfA - bemfB)`.                           |
+|     3. Pulse detection: `if (measured_bemf > bemf_threshold) ... commutation_pulse_count++`.       |
+|     4. Speed calculation (in `loop()`, every 100ms):                                             |
+|        - Atomically read and reset `commutation_pulse_count`.                                    |
+|        - `measured_speed_pps = pulses / 0.1`.                                                    |
+|   Outputs:                                                                                       |
+|     - `float measured_speed_pps` -> To Layer 2                                                   |
++--------------------------------------------------------------------------------------------------+
+
 ### Software-Architektur
 
 Der Code ist in zwei Hauptteile gegliedert: eine übergeordnete Zustandsmaschine für den Testablauf und eine untergeordnete Schleife für die PWM- und BEMF-Logik.
