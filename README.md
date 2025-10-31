@@ -75,18 +75,23 @@ The components are connected as follows:
 ### Connection Diagram (Physical Layout)
 
 ```
-                     +----------------------+
-                     |  XIAO SEED RP2040    |
-                     |      (Top View)      |
-                     +----------------------+
-                     | D0/A0            5v  |
-                     | D1/A1            GND |
-        (BEMF B) ----| D2/A2            3v3 |
-        (BEMF A) ----| D3/A3            D10 |
-        (DCC-RX) ----| D4               D9  |
-       (ACC-ACK) ----| D5               D8  |---- (PWM Rev -> InB)
-    (Railcom-TX) ----| D6               D7  |---- (PWM Fwd -> InA)
-                     +----------------------+
+                                                                   +-----------+
+                               +------------------------------> OutA |           |
+                               |                                    |   Motor   |
+                               |   +------------------------------> OutB |           |
+                               |   |                                    +-----------+
+                     +----------------------+      +----------------------+
+                     |  XIAO SEED RP2040    |      |     BDR6-133         |
+                     |      (Top View)      |      |    Motor Driver      |
+                     +----------------------+      +----------------------+
+                     | D0/A0            5v  |      |                      |
+                     | D1/A1            GND |      |                      |
+        (BEMF B) <---| D2/A2            3v3 | <----+                 OutB |
+        (BEMF A) <---| D3/A3            D10 | <----+                 OutA |
+        (DCC-RX) ----| D4               D9  |      |                      |
+       (ACC-ACK) ----| D5               D8  |----->| InB                  |
+    (Railcom-TX) ----| D6               D7  |----->| InA                  |
+                     +----------------------+      +----------------------+
 ```
 
 ## Status Indicator
