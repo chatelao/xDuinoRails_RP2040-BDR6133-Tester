@@ -11,13 +11,27 @@
  */
 #include <Arduino.h>
 #include "pico/time.h"
+#include <Adafruit_NeoPixel.h>
 
 //== Pin Definitions ==
 const int pwmAPin = D7;      ///< Pin for PWM Forward direction (connects to InA).
 const int pwmBPin = D8;      ///< Pin for PWM Reverse direction (connects to InB).
 const int bemfAPin = A3;     ///< ADC pin for BEMF measurement from motor terminal A.
 const int bemfBPin = A2;     ///< ADC pin for BEMF measurement from motor terminal B.
-const int statusLedPin = LED_BUILTIN; ///< Built-in LED for status indication.
+// const int statusLedPin = LED_BUILTIN; ///< Built-in LED for status indication.
+
+//== RGB LED Definitions ==
+const int NEOPIXEL_POWER_PIN = 11; ///< GPIO pin that powers the NeoPixel.
+const int NEOPIXEL_PIN = 12;       ///< GPIO pin for NeoPixel data.
+Adafruit_NeoPixel pixel(1, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+//== LED Color Definitions ==
+const uint32_t COLOR_BLUE = pixel.Color(0, 0, 255);
+const uint32_t COLOR_GREEN = pixel.Color(0, 255, 0);
+const uint32_t COLOR_RED = pixel.Color(255, 0, 0);
+const uint32_t COLOR_YELLOW = pixel.Color(255, 255, 0);
+const uint32_t COLOR_PINK = pixel.Color(255, 105, 180);
+const uint32_t COLOR_OFF = pixel.Color(0, 0, 0);
 
 //== Motor Control Parameters ==
 const int max_speed = 255;  ///< Maximum target speed value, corresponds to max PWM duty cycle.
@@ -50,9 +64,21 @@ enum MotorState {
     RAMP_DOWN,    ///< Motor decelerates to 10% of max_speed.
     COAST_LOW,    ///< Motor runs at 10% speed for a fixed duration.
     STOP,         ///< Motor is stopped for a fixed duration before reversing.
+    CHANGE_DIRECTION, ///< Brief delay while changing direction.
     MOTOR_STALLED ///< Motor has stalled and is now stopped.
 };
 MotorState current_state = RAMP_UP; ///< Current state of the machine.
+
+/**
+ * @enum ControllerAction
+ * @brief Defines the real-time action of the P-controller.
+ */
+enum ControllerAction {
+    ACCELERATING, ///< Speed is actively increasing.
+    DECELERATING, ///< Speed is actively decreasing.
+    STEADY        ///< Speed is being held constant.
+};
+volatile ControllerAction p_controller_action = STEADY; ///< Tracks the current action of the P-controller.
 unsigned long state_start_ms = 0;   ///< Timestamp (millis) when the current state was entered.
 unsigned long last_ramp_update_ms = 0; ///< Timestamp of the last speed adjustment during a ramp.
 const int ramp_step_delay_ms = 20; ///< Delay between speed steps during ramps.
@@ -103,6 +129,16 @@ int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
 
   // Calculate new PWM value and ensure it's within bounds
   int new_pwm = constrain(target_speed + (Kp * error), 0, max_speed);
+
+  // Update controller action state
+  if (new_pwm > current_pwm) {
+    p_controller_action = ACCELERATING;
+  } else if (new_pwm < current_pwm) {
+    p_controller_action = DECELERATING;
+  } else {
+    p_controller_action = STEADY;
+  }
+
   current_pwm = new_pwm; // Update the volatile PWM value
 
   return 0; // Does not repeat
@@ -156,8 +192,15 @@ bool pwm_on_callback(struct repeating_timer *t) {
 void setup() {
   pinMode(bemfAPin, INPUT);
   pinMode(bemfBPin, INPUT);
-  pinMode(statusLedPin, OUTPUT);
+  // pinMode(statusLedPin, OUTPUT);
   Serial.begin(9600);
+
+  // Initialize the NeoPixel
+  pinMode(NEOPIXEL_POWER_PIN, OUTPUT);
+  digitalWrite(NEOPIXEL_POWER_PIN, HIGH);
+  pixel.begin();
+  pixel.setBrightness(50); // Set a reasonable brightness
+  pixel.show(); // Initialize all pixels to 'off'
 
   // Initialize the hardware timer for the PWM base frequency
   add_repeating_timer_us(pwm_period_us, pwm_on_callback, NULL, &pwm_timer);
@@ -174,27 +217,67 @@ void setup() {
  */
 void update_status_light() {
     unsigned long current_millis = millis();
+    uint32_t color = COLOR_OFF;
+    bool blink_state = true; // Solid by default
+
+    // Determine color based on motor state and controller action
     switch (current_state) {
-        case RAMP_UP:
-            digitalWrite(statusLedPin, HIGH);
-            break;
-        case RAMP_DOWN:
-            digitalWrite(statusLedPin, (current_millis / 500) % 2);
-            break;
-        case COAST_HIGH:
-        case COAST_LOW:
-            digitalWrite(statusLedPin, HIGH);
-            break;
         case STOP:
-            digitalWrite(statusLedPin, (current_millis / 100) % 2);
+            color = COLOR_BLUE;
+            break;
+        case CHANGE_DIRECTION:
+            color = COLOR_PINK;
             break;
         case MOTOR_STALLED:
-            digitalWrite(statusLedPin, (current_millis / 50) % 2); // Very fast blink
+            color = COLOR_RED; // Stalled is a high-priority error color
             break;
-        default:
-            digitalWrite(statusLedPin, LOW);
+        case RAMP_UP:
+        case RAMP_DOWN:
+        case COAST_HIGH:
+        case COAST_LOW:
+            // For all moving states, the color depends on the P-controller's action.
+            // Reading the volatile variable atomically.
+            noInterrupts();
+            ControllerAction action = p_controller_action;
+            interrupts();
+
+            switch (action) {
+                case ACCELERATING:
+                    color = COLOR_GREEN;
+                    break;
+                case DECELERATING:
+                    color = COLOR_RED;
+                    break;
+                case STEADY:
+                    color = COLOR_YELLOW;
+                    break;
+            }
             break;
     }
+
+    // Determine blink pattern based on high-level state
+    switch (current_state) {
+        case RAMP_DOWN:
+            blink_state = (current_millis / 500) % 2; // Slow blink
+            break;
+        case CHANGE_DIRECTION:
+            blink_state = (current_millis / 100) % 2; // Fast blink
+            break;
+        case MOTOR_STALLED:
+            blink_state = (current_millis / 50) % 2;  // Very fast blink for error
+            break;
+        default:
+            blink_state = true; // Solid for all other states
+            break;
+    }
+
+    // Set the pixel color
+    if (blink_state) {
+        pixel.setPixelColor(0, color);
+    } else {
+        pixel.setPixelColor(0, COLOR_OFF);
+    }
+    pixel.show();
 }
 
 /**
@@ -288,9 +371,16 @@ void loop() {
 
     case STOP:
      if (time_in_state >= 2000) {
-      forward = !forward; // Change direction
-      current_state = RAMP_UP;
+      current_state = CHANGE_DIRECTION;
       state_start_ms = current_millis;
+     }
+     break;
+
+    case CHANGE_DIRECTION:
+     if (time_in_state >= 500) { // A brief 500ms delay for the fast blink
+        forward = !forward; // Change direction
+        current_state = RAMP_UP;
+        state_start_ms = current_millis;
      }
      break;
     case MOTOR_STALLED:
