@@ -2,7 +2,7 @@
 
 This project describes the wiring and control of a digital Märklin motor using a BDR6-133 motor driver and a XIAO SEED RP2040 microcontroller.
 
-**Für eine vollständige und detaillierte technische Beschreibung, eine "Erste Schritte"-Anleitung und eine Anleitung zur Fehlerbehebung, lesen Sie bitte die [ERWEITERTE DOKUMENTATION](DOKUMENTATION.md).**
+**For a complete and detailed technical description, a "Getting Started" guide, and a troubleshooting guide, please read the [EXTENDED DOCUMENTATION](DOCUMENTATION.md).**
 
 ## Control System
 
@@ -31,7 +31,7 @@ The control loop operates as follows:
             +------------------+     +------------------+     +------------------+
 Set-point   |                  |     |                  |     |                  |
 (Target --->|    Controller    |---->|      Motor       |---->|      Motor       |----> Actual
- Speed)     | (P-Regler)       | PWM |      Driver      | PWM |                  |      Speed
+ Speed)     | (P-Controller)   | PWM |      Driver      | PWM |                  |      Speed
             |                  |     |    (BDR-6133)    |     |                  |
             +------------------+     +------------------+     +------------------+
                   ^                                                   |
@@ -42,17 +42,17 @@ Set-point   |                  |     |                  |     |                 
                                         Feedback
 ```
 
-### Konzeptidee: Sanftanlauf-Routine
+### Concept Idea: Soft-Start Routine
 
-Um hohe Einschaltströme beim Anfahren des Motors zu vermeiden, kann eine Sanftanlauf-Routine implementiert werden. Diese Routine würde die PWM-Tastrate schrittweise erhöhen, anstatt sofort auf den vom P-Regler berechneten Wert zu springen.
+To avoid high inrush currents when starting the motor, a soft-start routine can be implemented. This routine would gradually increase the PWM duty cycle instead of immediately jumping to the value calculated by the P-controller.
 
-**Funktionsweise:**
+**How it works:**
 
-1.  **Initialisierung:** Wenn der Motor gestartet wird, beginnt die PWM-Tastrate bei einem sehr niedrigen Wert (z.B. 10 von 255).
-2.  **Rampe:** Die Tastrate wird in jedem Steuerzyklus um einen kleinen Betrag erhöht, bis sie den vom P-Regler geforderten Wert erreicht.
-3.  **Übergabe an den Regler:** Sobald die Rampe abgeschlossen ist, übernimmt der P-Regler die volle Kontrolle über die PWM-Tastrate.
+1.  **Initialization:** When the motor is started, the PWM duty cycle begins at a very low value (e.g., 10 out of 255).
+2.  **Ramp:** The duty cycle is increased by a small amount in each control cycle until it reaches the value required by the P-controller.
+3.  **Handover to Controller:** Once the ramp is complete, the P-controller takes full control of the PWM duty cycle.
 
-Diese Methode stellt sicher, dass der Motor sanft anläuft, was die mechanische Belastung reduziert und elektrische Spitzen vermeidet.
+This method ensures that the motor starts smoothly, which reduces mechanical stress and avoids electrical peaks.
 
 ## Wiring
 
