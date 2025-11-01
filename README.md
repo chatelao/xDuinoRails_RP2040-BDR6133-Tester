@@ -27,7 +27,7 @@ The control loop operates as follows:
 
 ### Control Loop Diagram
 
-![Control Loop Diagram](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/chatelao/xDuinoRails_RP2040-BDR6133-Tester/main/docs/control_loop.puml)
+![Control Loop Diagram](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/chatelao/xDuinoRails_RP2040-BDR6133-Tester/main/docs/control_loop.puml) 
 
 ### Concept Idea: Soft-Start Routine
 
