@@ -13,6 +13,7 @@
 #include "pico/time.h"
 #include <Adafruit_NeoPixel.h>
 #include <SimpleKalmanFilter.h>
+#include "PIController.h"
 
 //== Pin Definitions ==
 const int pwmAPin = D7;      ///< Pin for PWM Forward direction (connects to InA).
@@ -45,7 +46,7 @@ const unsigned long stall_timeout_ms = 1000; ///< Time in ms motor must be stall
 volatile bool pi_controller_enabled = true; ///< Global flag to enable/disable the PI controller logic.
 const float Kp = 0.1;       ///< Proportional gain for the PI-controller.
 const float Ki = 0.1;       ///< Integral gain for the PI-controller.
-volatile float integral_error = 0.0; ///< Accumulated error for the integral term.
+PIController pi_controller(Kp, Ki, max_speed);
 
 //== BEMF Pulse Counting ==
 const float EMA_ALPHA = 0.21;   ///< Alpha for the Exponential Moving Average filter for BEMF smoothing.
@@ -85,16 +86,6 @@ enum MotorState {
 };
 MotorState current_state = MOTOR_DITHER; ///< Current state of the machine.
 
-/**
- * @enum ControllerAction
- * @brief Defines the real-time action of the P-controller.
- */
-enum ControllerAction {
-    ACCELERATING, ///< Speed is actively increasing.
-    DECELERATING, ///< Speed is actively decreasing.
-    STEADY        ///< Speed is being held constant.
-};
-volatile ControllerAction p_controller_action = STEADY; ///< Tracks the current action of the P-controller.
 unsigned long state_start_ms = 0;   ///< Timestamp (millis) when the current state was entered.
 unsigned long last_ramp_update_ms = 0; ///< Timestamp of the last speed adjustment during a ramp.
 const int ramp_step_delay_ms = 20; ///< Delay between speed steps during ramps.
@@ -157,27 +148,7 @@ int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
   if (pi_controller_enabled) {
     // Note: Speed calculation is done in the main loop to avoid float math here.
     int measured_speed = map(measured_speed_pps, 0, 500, 0, 255); // Approximate mapping
-    int error = target_speed - measured_speed;
-
-    // Conditional Integration: only accumulate error if the output is not saturated.
-    if (current_pwm < max_speed) {
-      integral_error += error;
-    }
-
-    // Calculate new PWM value with PI controller and ensure it's within bounds
-    int adjustment = (Kp * error) + (Ki * integral_error);
-    int new_pwm = constrain(target_speed + adjustment, 0, max_speed);
-
-    // Update controller action state
-    if (new_pwm > current_pwm) {
-      p_controller_action = ACCELERATING;
-    } else if (new_pwm < current_pwm) {
-      p_controller_action = DECELERATING;
-    } else {
-      p_controller_action = STEADY;
-    }
-
-    current_pwm = new_pwm; // Update the volatile PWM value
+    current_pwm = pi_controller.calculate(target_speed, measured_speed, current_pwm);
   }
 
   return 0; // Does not repeat
@@ -275,10 +246,7 @@ void update_status_light() {
         case COAST_HIGH:
         case COAST_LOW:
             // For all moving states, the color depends on the P-controller's action.
-            // Reading the volatile variable atomically.
-            noInterrupts();
-            ControllerAction action = p_controller_action;
-            interrupts();
+            ControllerAction action = pi_controller.getAction();
 
             switch (action) {
                 case ACCELERATING:
@@ -426,7 +394,7 @@ void loop() {
       current_state = STOP;
       state_start_ms = current_millis;
       target_speed = 0; // Ensure motor is stopped
-      integral_error = 0.0; // Reset integral error when stopping
+      pi_controller.reset(); // Reset integral error when stopping
      }
      break;
 
@@ -440,7 +408,7 @@ void loop() {
     case CHANGE_DIRECTION:
      if (time_in_state >= 500) { // A brief 500ms delay for the fast blink
         forward = !forward; // Change direction
-        integral_error = 0.0; // Reset integral error on direction change
+        pi_controller.reset(); // Reset integral error on direction change
         current_state = MOTOR_DITHER;
         state_start_ms = current_millis;
      }
