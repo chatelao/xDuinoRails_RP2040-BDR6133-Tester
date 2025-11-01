@@ -26,9 +26,9 @@ frame "Signal Processing" {
 setpoint -> pi : speed_setpoint_pps
 pi -> pwm : pwm_duty_cycle
 pwm -> driver
-driver -> motor
+driver --> motor
 motor -> adc : back_EMF_voltage
 adc -> filter : raw_bemf_adc
-filter -> pi : filtered_speed_pps
+filter --> pi : filtered_speed_pps
 
 @enduml
