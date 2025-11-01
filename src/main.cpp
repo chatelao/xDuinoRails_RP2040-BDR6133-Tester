@@ -46,6 +46,7 @@ const float Ki = 0.1;       ///< Integral gain for the PI-controller.
 volatile float integral_error = 0.0; ///< Accumulated error for the integral term.
 
 //== BEMF Pulse Counting ==
+const float EMA_ALPHA = 0.21;   ///< Alpha for the Exponential Moving Average filter for BEMF smoothing.
 const int bemf_threshold = 500; ///< ADC value threshold for detecting a commutation pulse.
 volatile int commutation_pulse_count = 0; ///< Counter for BEMF pulses. Volatile for safe access from loop and PWM callback.
 float measured_speed_pps = 0.0; ///< Calculated motor speed in pulses per second.
@@ -113,8 +114,19 @@ int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
   int bemfB = analogRead(bemfBPin);
   int measured_bemf = abs(bemfA - bemfB);
 
-  // 4. Detect rising edge of a commutation pulse
-  bool current_bemf_state = (measured_bemf > bemf_threshold);
+  // 4. Apply EMA filter to smooth the BEMF reading
+  static float smoothed_bemf = 0.0;
+  static bool filter_initialized = false;
+
+  if (!filter_initialized) {
+    smoothed_bemf = measured_bemf;
+    filter_initialized = true;
+  } else {
+    smoothed_bemf = (EMA_ALPHA * measured_bemf) + ((1.0 - EMA_ALPHA) * smoothed_bemf);
+  }
+
+  // 5. Detect rising edge of a commutation pulse using the smoothed value
+  bool current_bemf_state = (smoothed_bemf > bemf_threshold);
   if (current_bemf_state && !last_bemf_state) {
     // This is accessed by the main loop, so it needs to be atomic.
     // However, we are in an interrupt, so noInterrupts() is not the right tool.
@@ -124,7 +136,7 @@ int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
   }
   last_bemf_state = current_bemf_state;
 
-  // 5. Run the PI-controller
+  // 6. Run the PI-controller
   // Note: Speed calculation is done in the main loop to avoid float math here.
   int measured_speed = map(measured_speed_pps, 0, 500, 0, 255); // Approximate mapping
   int error = target_speed - measured_speed;
