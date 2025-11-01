@@ -122,10 +122,9 @@ Legal Disclaimer Notice . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 2.4.2.5. MPU features . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 80
 2.4.2.6. AHB-Lite interface . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 80
 
-Table of Contents
+**Table of Contents**
 
-3
-
+* 3
 RP2040 Datasheet
 
 2.4.2.7. Single-cycle I/O port. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 80
@@ -820,12 +819,10 @@ RP2040-E5 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
 GPIO / ADC. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 643
 RP2040-E6 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 643
 
-Table of Contents
+# Table of Contents
 
-14
-
-RP2040 Datasheet
-
+  * * 14
+  * * RP2040 Datasheet
 Chapter 1. Introduction
 RP2040 is a low cost microcontroller device with the quality, cost and simplicity of the Raspberry Pi. Much like the
 Raspberry Pi is an accessible computer, the RP2040 is an accessible chip with everything you need to build a product.
