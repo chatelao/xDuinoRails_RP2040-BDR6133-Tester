@@ -1,0 +1,34 @@
+@startuml
+skinparam componentStyle uml2
+skinparam monochrome true
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+
+title Motor Control Loop
+
+frame "Firmware" {
+    [Target Speed] as setpoint
+    [PI Controller] as pi
+    [PWM Generation] as pwm
+}
+
+frame "Hardware" {
+    [Motor Driver] as driver
+    [DC Motor] as motor
+    [Analog-to-Digital\nConverter] as adc
+}
+
+frame "Signal Processing" {
+    [IIR Filter] as filter
+}
+
+setpoint -> pi : speed_setpoint_pps
+pi -> pwm : pwm_duty_cycle
+pwm -> driver
+driver -> motor
+motor -> adc : back_EMF_voltage
+adc -> filter : raw_bemf_adc
+filter -> pi : filtered_speed_pps
+
+@enduml
