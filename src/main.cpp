@@ -42,6 +42,7 @@ const int stall_speed_threshold_pps = 10; ///< If speed is below this (in pulses
 const unsigned long stall_timeout_ms = 1000; ///< Time in ms motor must be stalled before triggering the stall state.
 
 //== Proportional-Integral Controller ==
+volatile bool pi_controller_enabled = true; ///< Global flag to enable/disable the PI controller logic.
 const float Kp = 0.1;       ///< Proportional gain for the PI-controller.
 const float Ki = 0.1;       ///< Integral gain for the PI-controller.
 volatile float integral_error = 0.0; ///< Accumulated error for the integral term.
@@ -73,6 +74,7 @@ const long pwm_period_us = 1000000 / pwm_frequency; ///< PWM period in microseco
  * @brief Defines the states for the automatic motor test pattern.
  */
 enum MotorState {
+    MOTOR_DITHER, ///< Applies a short, alternating signal to overcome stiction.
     RAMP_UP,      ///< Motor accelerates to max_speed.
     COAST_HIGH,   ///< Motor runs at max_speed for a fixed duration.
     RAMP_DOWN,    ///< Motor decelerates to 10% of max_speed.
@@ -81,7 +83,7 @@ enum MotorState {
     CHANGE_DIRECTION, ///< Brief delay while changing direction.
     MOTOR_STALLED ///< Motor has stalled and is now stopped.
 };
-MotorState current_state = RAMP_UP; ///< Current state of the machine.
+MotorState current_state = MOTOR_DITHER; ///< Current state of the machine.
 
 /**
  * @enum ControllerAction
@@ -151,30 +153,32 @@ int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
   }
   last_bemf_state = current_bemf_state;
 
-  // 6. Run the PI-controller
-  // Note: Speed calculation is done in the main loop to avoid float math here.
-  int measured_speed = map(measured_speed_pps, 0, 500, 0, 255); // Approximate mapping
-  int error = target_speed - measured_speed;
+  // 6. Run the PI-controller if it's enabled
+  if (pi_controller_enabled) {
+    // Note: Speed calculation is done in the main loop to avoid float math here.
+    int measured_speed = map(measured_speed_pps, 0, 500, 0, 255); // Approximate mapping
+    int error = target_speed - measured_speed;
 
-  // Conditional Integration: only accumulate error if the output is not saturated.
-  if (current_pwm < max_speed) {
-    integral_error += error;
+    // Conditional Integration: only accumulate error if the output is not saturated.
+    if (current_pwm < max_speed) {
+      integral_error += error;
+    }
+
+    // Calculate new PWM value with PI controller and ensure it's within bounds
+    int adjustment = (Kp * error) + (Ki * integral_error);
+    int new_pwm = constrain(target_speed + adjustment, 0, max_speed);
+
+    // Update controller action state
+    if (new_pwm > current_pwm) {
+      p_controller_action = ACCELERATING;
+    } else if (new_pwm < current_pwm) {
+      p_controller_action = DECELERATING;
+    } else {
+      p_controller_action = STEADY;
+    }
+
+    current_pwm = new_pwm; // Update the volatile PWM value
   }
-
-  // Calculate new PWM value with PI controller and ensure it's within bounds
-  int adjustment = (Kp * error) + (Ki * integral_error);
-  int new_pwm = constrain(target_speed + adjustment, 0, max_speed);
-
-  // Update controller action state
-  if (new_pwm > current_pwm) {
-    p_controller_action = ACCELERATING;
-  } else if (new_pwm < current_pwm) {
-    p_controller_action = DECELERATING;
-  } else {
-    p_controller_action = STEADY;
-  }
-
-  current_pwm = new_pwm; // Update the volatile PWM value
 
   return 0; // Does not repeat
 }
@@ -364,6 +368,28 @@ void loop() {
   unsigned long time_in_state = current_millis - state_start_ms;
 
   switch (current_state) {
+    case MOTOR_DITHER:
+      // On first entry, disable the PI controller for direct PWM control.
+      if (time_in_state == 0) {
+        pi_controller_enabled = false;
+      }
+
+      // Run dither sequence for 80ms
+      if (time_in_state < 80) {
+        // 100 Hz means a 10ms period. 5ms forward, 5ms reverse.
+        bool dither_direction = (time_in_state / 5) % 2 == 0;
+        forward = dither_direction; // Directly control direction
+        current_pwm = max_speed * 0.15; // 15% duty cycle
+      } else {
+        // Dither complete. Transition to ramp up.
+        pi_controller_enabled = true; // Re-enable PI controller
+        current_pwm = 0; // Reset PWM before ramping
+        target_speed = 0;
+        current_state = RAMP_UP;
+        state_start_ms = current_millis;
+      }
+      break;
+
     case RAMP_UP:
      if (current_millis - last_ramp_update_ms >= ramp_step_delay_ms) {
       last_ramp_update_ms = current_millis;
@@ -415,7 +441,7 @@ void loop() {
      if (time_in_state >= 500) { // A brief 500ms delay for the fast blink
         forward = !forward; // Change direction
         integral_error = 0.0; // Reset integral error on direction change
-        current_state = RAMP_UP;
+        current_state = MOTOR_DITHER;
         state_start_ms = current_millis;
      }
      break;
