@@ -12,6 +12,7 @@
 #include <Arduino.h>
 #include "pico/time.h"
 #include <Adafruit_NeoPixel.h>
+#include <SimpleKalmanFilter.h>
 
 //== Pin Definitions ==
 const int pwmAPin = D7;      ///< Pin for PWM Forward direction (connects to InA).
@@ -47,10 +48,20 @@ volatile float integral_error = 0.0; ///< Accumulated error for the integral ter
 
 //== BEMF Pulse Counting ==
 const float EMA_ALPHA = 0.21;   ///< Alpha for the Exponential Moving Average filter for BEMF smoothing.
+// Kalman filter parameters for BEMF smoothing.
+// e_mea: Measurement Uncertainty - How much we expect our measurement to vary.
+// e_est: Estimation Uncertainty - Can be initialized with the same value as e_mea.
+// q: Process Variance - A small number indicating how fast the measurement moves.
+// These defaults are tuned for a brushed DC motor with a 3-split commutator,
+// which typically has high measurement noise (e_mea) and low process variance (q).
+const float BEMF_MEA_E = 2.0; ///< Measurement uncertainty.
+const float BEMF_EST_E = 2.0; ///< Estimation uncertainty.
+const float BEMF_Q = 0.01;    ///< Process variance.
 const int bemf_threshold = 500; ///< ADC value threshold for detecting a commutation pulse.
 volatile int commutation_pulse_count = 0; ///< Counter for BEMF pulses. Volatile for safe access from loop and PWM callback.
 float measured_speed_pps = 0.0; ///< Calculated motor speed in pulses per second.
 bool last_bemf_state = false;   ///< State of the BEMF signal in the previous cycle to detect rising edge.
+SimpleKalmanFilter bemfKalmanFilter(BEMF_MEA_E, BEMF_EST_E, BEMF_Q);
 
 //== Software PWM Parameters ==
 const int pwm_frequency = 1000; ///< PWM frequency in Hz.
@@ -125,8 +136,12 @@ int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
     smoothed_bemf = (EMA_ALPHA * measured_bemf) + ((1.0 - EMA_ALPHA) * smoothed_bemf);
   }
 
-  // 5. Detect rising edge of a commutation pulse using the smoothed value
-  bool current_bemf_state = (smoothed_bemf > bemf_threshold);
+  // 4b. Apply Kalman filter for additional smoothing
+  // The first call to updateEstimate will initialize the filter.
+  float kalman_filtered_bemf = bemfKalmanFilter.updateEstimate(smoothed_bemf);
+
+  // 5. Detect rising edge of a commutation pulse using the final filtered value
+  bool current_bemf_state = (kalman_filtered_bemf > bemf_threshold);
   if (current_bemf_state && !last_bemf_state) {
     // This is accessed by the main loop, so it needs to be atomic.
     // However, we are in an interrupt, so noInterrupts() is not the right tool.
