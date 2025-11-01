@@ -38,6 +38,11 @@ void PIController::reset() {
     integral_error_ = 0.0;
 }
 
+void PIController::setGains(float kp, float ki) {
+    kp_ = kp;
+    ki_ = ki;
+}
+
 ControllerAction PIController::getAction() const {
     return action_;
 }

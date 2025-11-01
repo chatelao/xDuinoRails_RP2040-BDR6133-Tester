@@ -16,6 +16,7 @@ public:
     PIController(float kp, float ki, int max_output);
     int calculate(int target_speed, int measured_speed, int current_pwm);
     void reset();
+    void setGains(float kp, float ki);
     ControllerAction getAction() const;
 
 private:
