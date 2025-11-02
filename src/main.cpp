@@ -234,7 +234,7 @@ const int ramp_step_delay_ms = 20; ///< Delay between speed steps during ramps.
 //== Global Motor & PWM State Variables ==
 volatile int target_speed = 0; ///< The desired speed for the motor, set by the state machine.
 volatile int current_pwm = 0;  ///< The current PWM duty cycle (0-255), calculated by the P-controller. Volatile for interrupt access.
-volatile bool motor_motor_forward = true;  ///< Current direction of the motor. true for motor_forward, false for reverse.
+volatile bool motor_forward = true;  ///< Current direction of the motor. true for motor_forward, false for reverse.
 
 #ifndef USE_RP2040_LOWLEVEL
 struct repeating_timer pwm_timer; ///< Holds the repeating timer instance for the PWM cycle.
