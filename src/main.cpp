@@ -241,8 +241,6 @@ void setup_hardware_control() {
 }
 #endif
 
-#endif
-
 /**
  * @brief Timer callback for the PWM OFF phase.
  *
