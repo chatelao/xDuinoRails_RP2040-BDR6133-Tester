@@ -37,6 +37,7 @@ const uint32_t COLOR_OFF = pixel.Color(0, 0, 0);
 
 //== Motor Control Parameters ==
 const int max_speed = 255;  ///< Maximum target speed value, corresponds to max PWM duty cycle.
+const int rangiermodus_speed_threshold = max_speed * 0.1; ///< Speed threshold below which Rangiermodus is active.
 
 //== Stall Detection Parameters ==
 const int stall_speed_threshold_pps = 10; ///< If speed is below this (in pulses/sec) while motor is active, it's considered stalled.
@@ -44,9 +45,12 @@ const unsigned long stall_timeout_ms = 1000; ///< Time in ms motor must be stall
 
 //== Proportional-Integral Controller ==
 volatile bool pi_controller_enabled = true; ///< Global flag to enable/disable the PI controller logic.
-const float Kp = 0.1;       ///< Proportional gain for the PI-controller.
-const float Ki = 0.1;       ///< Integral gain for the PI-controller.
-PIController pi_controller(Kp, Ki, max_speed);
+const float Kp_normal = 0.1;       ///< Proportional gain for normal speeds.
+const float Ki_normal = 0.1;       ///< Integral gain for normal speeds.
+const float Kp_rangier = 0.15;     ///< Proportional gain for Rangiermodus (low speeds).
+const float Ki_rangier = 0.05;     ///< Integral gain for Rangiermodus (low speeds).
+PIController pi_controller(Kp_normal, Ki_normal, max_speed);
+bool was_in_rangiermodus = false; ///< Tracks if the motor was in Rangiermodus in the previous cycle to detect transitions.
 
 //== BEMF Pulse Counting ==
 const float EMA_ALPHA = 0.21;   ///< Alpha for the Exponential Moving Average filter for BEMF smoothing.
@@ -146,6 +150,20 @@ int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
 
   // 6. Run the PI-controller if it's enabled
   if (pi_controller_enabled) {
+    bool is_in_rangiermodus = (target_speed > 0 && target_speed <= rangiermodus_speed_threshold);
+
+    // If we are transitioning into or out of Rangiermodus, reset the integral error to prevent jumps.
+    if (is_in_rangiermodus != was_in_rangiermodus) {
+        pi_controller.reset();
+    }
+    was_in_rangiermodus = is_in_rangiermodus;
+
+    // Select PI gains based on whether the target speed is in Rangiermodus range
+    if (is_in_rangiermodus) {
+        pi_controller.setGains(Kp_rangier, Ki_rangier);
+    } else {
+        pi_controller.setGains(Kp_normal, Ki_normal);
+    }
     // Note: Speed calculation is done in the main loop to avoid float math here.
     int measured_speed = map(measured_speed_pps, 0, 500, 0, 255); // Approximate mapping
     current_pwm = pi_controller.calculate(target_speed, measured_speed, current_pwm);
@@ -231,35 +249,40 @@ void update_status_light() {
     bool blink_state = true; // Solid by default
 
     // Determine color based on motor state and controller action
-    switch (current_state) {
-        case STOP:
-            color = COLOR_BLUE;
-            break;
-        case CHANGE_DIRECTION:
-            color = COLOR_PINK;
-            break;
-        case MOTOR_STALLED:
-            color = COLOR_RED; // Stalled is a high-priority error color
-            break;
-        case RAMP_UP:
-        case RAMP_DOWN:
-        case COAST_HIGH:
-        case COAST_LOW:
-            // For all moving states, the color depends on the P-controller's action.
-            ControllerAction action = pi_controller.getAction();
+    // Rangiermodus has highest priority for color indication after stall.
+    if (current_state != MOTOR_STALLED && target_speed > 0 && target_speed <= rangiermodus_speed_threshold) {
+        color = COLOR_BLUE;
+    } else {
+        switch (current_state) {
+            case STOP:
+                color = COLOR_BLUE;
+                break;
+            case CHANGE_DIRECTION:
+                color = COLOR_PINK;
+                break;
+            case MOTOR_STALLED:
+                color = COLOR_RED; // Stalled is a high-priority error color
+                break;
+            case RAMP_UP:
+            case RAMP_DOWN:
+            case COAST_HIGH:
+            case COAST_LOW:
+                // For all moving states, the color depends on the P-controller's action.
+                ControllerAction action = pi_controller.getAction();
 
-            switch (action) {
-                case ACCELERATING:
-                    color = COLOR_GREEN;
-                    break;
-                case DECELERATING:
-                    color = COLOR_RED;
-                    break;
-                case STEADY:
-                    color = COLOR_YELLOW;
-                    break;
-            }
-            break;
+                switch (action) {
+                    case ACCELERATING:
+                        color = COLOR_GREEN;
+                        break;
+                    case DECELERATING:
+                        color = COLOR_RED;
+                        break;
+                    case STEADY:
+                        color = COLOR_YELLOW;
+                        break;
+                }
+                break;
+        }
     }
 
     // Determine blink pattern based on high-level state

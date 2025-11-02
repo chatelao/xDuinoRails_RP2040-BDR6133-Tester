@@ -37,9 +37,23 @@ void test_pi_controller_simulation() {
         motor.update(current_pwm);
         results_file << i << "," << target_speed << "," << measured_speed << "," << current_pwm << std::endl;
     }
+    assert(motor.getSpeed() > 150);
+
+    // --- Test Rangiermodus ---
+    target_speed = 20; // 10% of 255 is ~25. Let's use 20.
+    controller.setGains(0.15, 0.05); // Use the new Rangiermodus gains
+    controller.reset(); // Reset integral error for the new phase
+
+    for (int i = 500; i < 1000; ++i) {
+        int measured_speed = motor.getSpeed();
+        current_pwm = controller.calculate(target_speed, measured_speed, current_pwm);
+        motor.update(current_pwm);
+        results_file << i << "," << target_speed << "," << measured_speed << "," << current_pwm << std::endl;
+    }
 
     results_file.close();
-    assert(motor.getSpeed() > 150);
+    // Assert that the speed has settled near the low target speed
+    assert(motor.getSpeed() > 10 && motor.getSpeed() < 30);
 }
 
 int main() {
