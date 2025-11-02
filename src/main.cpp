@@ -241,6 +241,8 @@ void setup_hardware_control() {
 }
 #endif
 
+#endif
+
 /**
  * @brief Timer callback for the PWM OFF phase.
  *
@@ -251,6 +253,7 @@ void setup_hardware_control() {
  * @param alarm_id The ID of the alarm that triggered.
  * @return 0
  */
+#ifndef USE_RP2040_LOWLEVEL
 int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data) {
   // 1. Put H-Bridge into high-impedance state to measure BEMF
   pinMode(pwmAPin, INPUT);
@@ -351,6 +354,7 @@ bool pwm_on_callback(struct repeating_timer *t) {
 
   return true; // Keep the repeating timer going
 }
+#endif
 
 /**
  * @brief Initializes hardware pins, serial communication, and hardware timers.
