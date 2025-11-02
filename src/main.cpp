@@ -10,7 +10,9 @@
  * run an automatic test pattern.
  */
 #include <Arduino.h>
+#ifndef USE_RP2040_LOWLEVEL
 #include "pico/time.h"
+#endif
 #include <Adafruit_NeoPixel.h>
 #include <SimpleKalmanFilter.h>
 #include "PIController.h"
@@ -69,9 +71,144 @@ float measured_speed_pps = 0.0; ///< Calculated motor speed in pulses per second
 bool last_bemf_state = false;   ///< State of the BEMF signal in the previous cycle to detect rising edge.
 SimpleKalmanFilter bemfKalmanFilter(BEMF_MEA_E, BEMF_EST_E, BEMF_Q);
 
-//== Software PWM Parameters ==
+//== PWM Parameters ==
+#ifndef USE_RP2040_LOWLEVEL
 const int pwm_frequency = 1000; ///< PWM frequency in Hz.
 const long pwm_period_us = 1000000 / pwm_frequency; ///< PWM period in microseconds.
+#else // USE_RP2040_LOWLEVEL
+#include "hardware/pwm.h"
+#include "hardware/dma.h"
+#include "hardware/adc.h"
+#include "hardware/irq.h"
+
+//== Hardware PWM & BEMF Measurement Parameters ==
+const uint PWM_FREQUENCY_HZ = 25000;
+const uint16_t PWM_WRAP_VALUE = (125000000 / PWM_FREQUENCY_HZ) - 1;
+const uint BEMF_MEASUREMENT_DELAY_US = 10;
+
+// Ring buffer for DMA.
+const uint BEMF_RING_BUFFER_SIZE = 64;
+
+//== Globals for Hardware Control ==
+uint dma_channel;
+uint motor_pwm_slice;
+volatile uint16_t bemf_ring_buffer[BEMF_RING_BUFFER_SIZE];
+
+// Forward Declarations
+void dma_irq_handler();
+void setup_hardware_control();
+void update_pwm_duty_cycle();
+void on_pwm_wrap();
+int64_t delayed_adc_trigger_callback(alarm_id_t id, void *user_data);
+
+
+void dma_irq_handler() {
+    dma_hw->ints0 = 1u << dma_channel;
+
+    uint32_t sum_A = 0, sum_B = 0;
+    for (uint i = 0; i < BEMF_RING_BUFFER_SIZE; i += 2) {
+        sum_B += bemf_ring_buffer[i]; // ADC2
+        sum_A += bemf_ring_buffer[i + 1]; // ADC3
+    }
+    int measured_bemf = abs((int)(sum_A / (BEMF_RING_BUFFER_SIZE / 2)) - (int)(sum_B / (BEMF_RING_BUFFER_SIZE / 2)));
+
+    static float smoothed_bemf = 0.0;
+    static bool filter_initialized = false;
+    if (!filter_initialized) {
+        smoothed_bemf = measured_bemf;
+        filter_initialized = true;
+    } else {
+        smoothed_bemf = (EMA_ALPHA * measured_bemf) + ((1.0 - EMA_ALPHA) * smoothed_bemf);
+    }
+    float kalman_filtered_bemf = bemfKalmanFilter.updateEstimate(smoothed_bemf);
+
+    bool current_bemf_state = (kalman_filtered_bemf > bemf_threshold);
+    if (current_bemf_state && !last_bemf_state) {
+        commutation_pulse_count++;
+    }
+    last_bemf_state = current_bemf_state;
+
+    if (pi_controller_enabled) {
+        bool is_in_rangiermodus = (target_speed > 0 && target_speed <= rangiermodus_speed_threshold);
+        if (is_in_rangiermodus != was_in_rangiermodus) pi_controller.reset();
+        was_in_rangiermodus = is_in_rangiermodus;
+        pi_controller.setGains(is_in_rangiermodus ? Kp_rangier : Kp_normal, is_in_rangiermodus ? Ki_rangier : Ki_normal);
+
+        int measured_speed = map(measured_speed_pps, 0, 500, 0, 255);
+        current_pwm = pi_controller.calculate(target_speed, measured_speed, current_pwm);
+    }
+
+    dma_channel_set_write_addr(dma_channel, bemf_ring_buffer, true);
+}
+
+void update_pwm_duty_cycle() {
+    uint16_t level = map(current_pwm, 0, 255, 0, PWM_WRAP_VALUE);
+    if (forward) {
+        pwm_set_gpio_level(pwmAPin, level);
+        pwm_set_gpio_level(pwmBPin, 0);
+    } else {
+        pwm_set_gpio_level(pwmAPin, 0);
+        pwm_set_gpio_level(pwmBPin, level);
+    }
+}
+
+int64_t delayed_adc_trigger_callback(alarm_id_t id, void *user_data) {
+    adc_run(true);
+    return 0; // Do not reschedule
+}
+
+void on_pwm_wrap() {
+    pwm_clear_irq(motor_pwm_slice);
+    add_alarm_in_us(BEMF_MEASUREMENT_DELAY_US, delayed_adc_trigger_callback, NULL, true);
+}
+
+
+void setup_hardware_control() {
+    // --- ADC and DMA Setup ---
+    adc_init();
+    adc_gpio_init(bemfBPin);
+    adc_gpio_init(bemfAPin);
+    adc_set_round_robin((1u << 2) | (1u << 3));
+    adc_select_input(2);
+    adc_fifo_setup(true, true, 1, false, false); // DREQ on every sample
+
+    dma_channel = dma_claim_unused_channel(true);
+    dma_channel_config dma_config = dma_channel_get_default_config(dma_channel);
+    // Transfer 16-bit ADC samples
+    channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_16);
+    // Always read from the same ADC FIFO address
+    channel_config_set_read_increment(&dma_config, false);
+    // Increment the write address to fill the buffer
+    channel_config_set_write_increment(&dma_config, true);
+    // DMA is paced by the ADC's DREQ signal
+    channel_config_set_dreq(&dma_config, DREQ_ADC);
+    // Wrap the write address back to the start when the buffer is full (64 bytes = 2^6)
+    channel_config_set_ring(&dma_config, true, 6);
+
+    dma_channel_configure(dma_channel, &dma_config, bemf_ring_buffer, &adc_hw->fifo, BEMF_RING_BUFFER_SIZE, false);
+    dma_channel_set_irq0_enabled(dma_channel, true);
+    irq_set_exclusive_handler(DMA_IRQ_0, dma_irq_handler);
+    irq_set_enabled(DMA_IRQ_0, true);
+
+    // --- PWM Setup for Motor Control ---
+    gpio_set_function(pwmAPin, GPIO_FUNC_PWM);
+    gpio_set_function(pwmBPin, GPIO_FUNC_PWM);
+    motor_pwm_slice = pwm_gpio_to_slice_num(pwmAPin);
+
+    pwm_config motor_pwm_conf = pwm_get_default_config();
+    pwm_config_set_wrap(&motor_pwm_conf, PWM_WRAP_VALUE);
+    pwm_init(motor_pwm_slice, &motor_pwm_conf, true);
+
+    // --- PWM Interrupt for Synchronization ---
+    pwm_clear_irq(motor_pwm_slice);
+    pwm_set_irq_enabled(motor_pwm_slice, true);
+    irq_set_exclusive_handler(PWM_IRQ_WRAP, on_pwm_wrap);
+    irq_set_enabled(PWM_IRQ_WRAP, true);
+
+    // Start DMA, which will wait for the first ADC trigger.
+    dma_channel_set_write_addr(dma_channel, bemf_ring_buffer, true);
+}
+#endif
 
 //== State Machine for Test Pattern ==
 /**
@@ -95,9 +232,11 @@ unsigned long last_ramp_update_ms = 0; ///< Timestamp of the last speed adjustme
 const int ramp_step_delay_ms = 20; ///< Delay between speed steps during ramps.
 
 //== Global Motor & PWM State Variables ==
-int target_speed = 0; ///< The desired speed for the motor, set by the state machine.
+volatile int target_speed = 0; ///< The desired speed for the motor, set by the state machine.
 volatile int current_pwm = 0;  ///< The current PWM duty cycle (0-255), calculated by the P-controller. Volatile for interrupt access.
-bool forward = true;  ///< Current direction of the motor. true for forward, false for reverse.
+volatile bool forward = true;  ///< Current direction of the motor. true for forward, false for reverse.
+
+#ifndef USE_RP2040_LOWLEVEL
 struct repeating_timer pwm_timer; ///< Holds the repeating timer instance for the PWM cycle.
 
 /**
@@ -210,6 +349,7 @@ bool pwm_on_callback(struct repeating_timer *t) {
 
   return true; // Keep the repeating timer going
 }
+#endif
 
 /**
  * @brief Initializes hardware pins, serial communication, and hardware timers.
@@ -231,7 +371,11 @@ void setup() {
   pixel.show(); // Initialize all pixels to 'off'
 
   // Initialize the hardware timer for the PWM base frequency
+#ifndef USE_RP2040_LOWLEVEL
   add_repeating_timer_us(pwm_period_us, pwm_on_callback, NULL, &pwm_timer);
+#else
+  setup_hardware_control();
+#endif
 }
 
 /**
@@ -447,4 +591,7 @@ void loop() {
   // the main loop is now much simpler and only needs to manage the
   // high-level state machine and speed calculations. The CPU load is
   // significantly reduced.
+#ifdef USE_RP2040_LOWLEVEL
+  update_pwm_duty_cycle();
+#endif
 }
