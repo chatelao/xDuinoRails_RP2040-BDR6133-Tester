@@ -16,14 +16,21 @@ The control loop operates as follows:
     *   The BEMF measurement is strategically timed to occur during the "off" phase of each PWM cycle, ensuring that the measurement is not affected by the driving voltage.
     *   To measure the BEMF, the motor is briefly disconnected from the driving voltage. This is achieved by setting the motor driver's input pins (`D7`, `D8`) to `INPUT` mode, which puts the H-Bridge into a high-impedance (coasting) state.
     *   After a 100-microsecond delay to allow the motor's electrical state to stabilize, the BEMF is read as a differential voltage between the two motor terminals (`OutA` and `OutB`).
-    *   As the motor turns, the BEMF signal forms a wave. The system counts the peaks (commutation pulses) of this wave. The total count is used to calculate the motor's speed in pulses per second (PPS) over a 100ms interval.
 
-2.  **Proportional Controller:**
-    *   A proportional (P) controller is used to adjust the motor's speed.
-    *   It first calculates the `error` by subtracting the measured speed from the `target_speed`.
-    *   It then calculates a new PWM duty cycle by adding a correction factor to the target speed. This correction is the `error` multiplied by a proportional gain constant (`Kp`).
-    *   The formula is: `PWM_Duty_Cycle = Target_Speed + (Kp * Error)`
-    *   The result is constrained to valid PWM values (0-255).
+2.  **BEMF Signal Filtering:**
+    *   The raw BEMF signal is noisy, especially with a 3-pole commutator motor. To get a stable speed reading, a two-stage filtering process is used:
+        1.  **Exponential Moving Average (EMA) Filter:** A simple EMA filter is applied first to perform an initial smoothing of the signal and reduce high-frequency noise spikes.
+        2.  **Kalman Filter:** The pre-filtered signal is then passed to a Kalman filter. This advanced filter estimates the "true" BEMF value based on a system model, effectively filtering out noise while introducing minimal signal delay. This provides a clean signal for reliable speed calculation.
+    *   The filtered BEMF signal is used to count commutation pulses, which are then converted into a speed value in pulses per second (PPS).
+
+3.  **Proportional-Integral (PI) Controller:**
+    *   A Proportional-Integral (PI) controller is used to adjust the motor's speed with high accuracy and stability.
+    *   It calculates the `error` by subtracting the measured speed from the `target_speed`.
+    *   The controller has two components:
+        *   The **Proportional (P) term** provides an immediate correction based on the current error (`Kp * error`).
+        *   The **Integral (I) term** accumulates the error over time. This helps to eliminate steady-state error and ensures the motor reaches the target speed, even under sustained load.
+    *   The final PWM duty cycle is a combination of these two terms, ensuring a rapid response to changes and long-term accuracy.
+    *   The controller also implements an anti-windup mechanism to prevent the integral term from becoming excessively large when the PWM output is saturated.
 
 ### Control Loop Diagram
 
