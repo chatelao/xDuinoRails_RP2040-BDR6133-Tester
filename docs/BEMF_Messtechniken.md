@@ -1,82 +1,65 @@
-# Alternative BEMF-Messtechniken zur Verbesserung der Genauigkeit
+# BEMF-Messtechnik und Filterung
 
-Die Messung der Back-EMF (BEMF) ist entscheidend für eine präzise, sensorlose Motorsteuerung. Die Genauigkeit dieser Messung kann durch verschiedene Techniken verbessert werden.
+Die genaue Messung der Back-EMF (BEMF) ist entscheidend für die präzise, sensorlose Regelung des Motors. Dieses Dokument beschreibt die im Projekt implementierten Techniken, um aus dem verrauschten Rohsignal eine stabile Geschwindigkeitsinformation zu gewinnen.
 
-## 1. Differenzielle Messung
+Der Prozess gliedert sich in zwei Hauptschritte: die grundlegende Messmethode und eine zweistufige Software-Filterung.
 
-Die aktuell implementierte Methode, die BEMF als Differenz zwischen den beiden Motoranschlüssen zu messen (`bemfAPin` und `bemfBPin`), ist bereits eine robuste Grundlage. Sie minimiert Gleichtaktstörungen, die durch die PWM-Ansteuerung induziert werden.
+## 1. Grundlage: Differenzielle Messung
 
-**Vorteile:**
-- Unterdrückung von Gleichtaktrauschen.
-- Einfache Implementierung mit zwei ADC-Kanälen.
+Die BEMF wird als Differenzspannung zwischen den beiden Motoranschlüssen (`bemfAPin` und `bemfBPin`) gemessen. Dieser Ansatz ist die Grundlage für die gesamte weitere Verarbeitung.
 
-**Nachteile:**
-- Erfordert zwei synchronisierte ADC-Messungen für optimale Ergebnisse.
-
-## 2. Hardware-Tiefpassfilter
-
-Ein einfacher RC-Tiefpassfilter (Widerstand-Kondensator-Glied) kann an den ADC-Eingängen platziert werden, um hochfrequentes Rauschen aus dem PWM-Signal zu filtern, bevor es den ADC erreicht.
-
-**Schaltung:**
-Ein Widerstand in Serie zum ADC-Pin und ein Kondensator vom ADC-Pin gegen Masse.
+```cpp
+// Aus src/main.cpp
+int bemfA = analogRead(bemfAPin);
+int bemfB = analogRead(bemfBPin);
+int measured_bemf = abs(bemfA - bemfB);
+```
 
 **Vorteile:**
-- Einfache und kostengünstige Hardwarelösung.
-- Reduziert die Last auf die Software, da das Signal bereits "sauberer" ist.
+- **Unterdrückung von Gleichtaktstörungen:** Rauschen, das auf beiden Leitungen gleichzeitig auftritt (z.B. durch die PWM-Ansteuerung induziert), wird durch die Differenzbildung effektiv eliminiert.
+- **Robuste Grundlage:** Liefert ein besseres Rohsignal als eine Messung gegen Masse.
 
-**Nachteile:**
-- Führt eine Phasenverschiebung ein, die bei der Synchronisation mit dem PWM-Zyklus berücksichtigt werden muss.
-- Die Grenzfrequenz des Filters muss sorgfältig auf die PWM-Frequenz abgestimmt werden.
+## 2. Software-Filterung zur Signalglättung
 
-## 3. Oversampling und Mittelwertbildung
+Das differenzielle BEMF-Signal ist, besonders bei einem Motor mit 3-poligem Kollektor, immer noch stark verrauscht. Um ein stabiles Signal für die Pulszählung und die PI-Regelung zu erhalten, wird eine zweistufige Filterkaskade eingesetzt.
 
-Diese rein softwarebasierte Technik besteht darin, mehrere ADC-Messungen in schneller Folge durchzuführen und den Durchschnittswert zu berechnen.
+### Stufe 1: EMA-Filter (Exponential Moving Average)
 
-**Implementierung:**
-Innerhalb des Zeitfensters, in dem die BEMF gemessen wird, wird der ADC mehrmals ausgelesen und die Ergebnisse werden gemittelt.
+Das rohe BEMF-Signal wird zuerst durch einen einfachen, aber effektiven EMA-Tiefpassfilter geleitet. Dieser führt eine erste Glättung durch und reduziert hochfrequente Rauschspitzen.
 
-**Vorteile:**
-- Verbessert das Signal-Rausch-Verhältnis (SNR).
-- Keine zusätzliche Hardware erforderlich.
+```cpp
+// Aus src/main.cpp
+smoothed_bemf = (EMA_ALPHA * measured_bemf) + ((1.0 - EMA_ALPHA) * smoothed_bemf);
+```
 
-**Nachteile:**
-- Erhöht die Prozessorlast.
-- Benötigt ausreichend Zeit für die Messungen innerhalb eines PWM-Zyklus.
+- **Zweck:** Dämpfung von starkem, schnellem Rauschen.
+- **Parameter:** Der `EMA_ALPHA`-Wert (`0.21`) bestimmt die Stärke der Glättung. Ein kleinerer Wert glättet stärker, führt aber auch zu mehr Signalverzögerung.
 
-## 4. Kalman-Filter zur Glättung der Messwerte
+### Stufe 2: Kalman-Filter
 
-Ein Kalman-Filter ist ein fortschrittlicher digitaler Filter, der auf einem mathematischen Modell des Systems basiert, um eine optimale Schätzung des Zustands (in diesem Fall der BEMF) zu liefern. Er ist besonders effektiv bei der Reduzierung von Rauschen in dynamischen Systemen.
+Der bereits vorgeglättete Wert aus dem EMA-Filter wird anschließend an einen Kalman-Filter übergeben. Dieser fortschrittliche Filter ist die Kernkomponente für die Signalanalyse, da er den Zustand des Signals (die "wahre" BEMF) unter Berücksichtigung der physikalischen Eigenschaften des Motors schätzt.
 
-### Funktionsweise und Logik
+#### Funktionsweise und Logik
 
-Der Kalman-Filter arbeitet in einem Zwei-Phasen-Prozess:
+Der Kalman-Filter ist ideal für diese Aufgabe, da er von einem Systemmodell ausgeht. Vereinfacht gesagt: Der Filter "weiß", dass der Motor eine gewisse Trägheit besitzt und seine Geschwindigkeit (und somit die BEMF) sich nicht beliebig schnell ändern kann.
 
-1.  **Vorhersage (Prediction):** Basierend auf dem letzten geschätzten Zustand und einem Systemmodell sagt der Filter den nächsten Zustand voraus. Im Kontext der Motorsteuerung könnte das Modell annehmen, dass die Motorgeschwindigkeit (und damit die BEMF) sich nicht abrupt ändert.
-2.  **Korrektur (Update):** Der Filter vergleicht die Vorhersage mit dem neuen Messwert. Basierend auf der Unsicherheit der Vorhersage und der Messung berechnet er einen korrigierten, optimalen Zustand. Dieser korrigierte Wert ist eine gewichtete Mischung aus der Vorhersage und der Messung.
+Er arbeitet in zwei Phasen:
+1.  **Vorhersage (Prediction):** Basierend auf dem letzten Zustand sagt der Filter den nächsten Zustand voraus. Er erwartet eine gewisse Kontinuität.
+2.  **Korrektur (Update):** Er vergleicht die Vorhersage mit dem neuen (bereits EMA-gefilterten) Messwert. Weicht der Messwert stark von der Vorhersage ab, wird er als wahrscheinliches Rauschen eingestuft und nur gering gewichtet. Liegen Vorhersage und Messung nahe beieinander, wird der Messwert stärker gewichtet.
 
-Einfach ausgedrückt: Der Filter "weiß", dass der Motor eine gewisse Trägheit hat und die BEMF sich nicht sprunghaft ändern kann. Wenn ein Messwert stark von der Erwartung abweicht, geht der Filter davon aus, dass es sich wahrscheinlich um Rauschen handelt, und gewichtet die Vorhersage stärker. Wenn Messung und Vorhersage nahe beieinander liegen, "vertraut" der Filter dem Messwert mehr.
+#### Vorteile im Projekt
+- **Optimale Glättung:** Liefert eine mathematisch optimale Schätzung des BEMF-Signals, was zu einer sehr zuverlässigen Erkennung der Kommutierungspulse führt.
+- **Geringe Latenz:** Verursacht weniger Phasenverschiebung (Signalverzögerung) als ein starker EMA- oder RC-Filter allein, was für die Stabilität des Regelkreises entscheidend ist.
+- **Anpassungsfähigkeit:** Die Leistung wird über Parameter an die Motorcharakteristik angepasst. Im Code sind dies `BEMF_MEA_E` (Messunsicherheit) und `BEMF_Q` (Prozessvarianz), die für einen Motor mit hohem Messrauschen und geringer Prozessdynamik (Trägheit) voreingestellt sind.
 
-### Vor- und Nachteile
+## Zusammenfassung der Implementierung
 
-**Vorteile:**
-- **Optimale Schätzung:** Liefert mathematisch die bestmögliche Schätzung, wenn das Rauschen normalverteilt ist (Gauß'sches Rauschen).
-- **Adaptiv:** Kann sich an ändernde Systemdynamiken anpassen.
-- **Glättung ohne Phasenverschiebung:** Im Vergleich zu einfachen Tiefpassfiltern führt der Kalman-Filter eine deutlich geringere Verzögerung (Phasenverschiebung) in das Signal ein, was für Regelkreise sehr wichtig ist.
-- **Zustandsschätzung:** Kann nicht nur die BEMF glätten, sondern auch andere Zustände wie die Beschleunigung schätzen, falls das Modell entsprechend erweitert wird.
+Die aktuelle Lösung kombiniert bewährte Techniken zu einer robusten Verarbeitungskette:
 
-**Nachteile:**
-- **Komplexität:** Die Implementierung ist mathematisch anspruchsvoll und erfordert ein gutes Verständnis der Theorie.
-- **Rechenintensiv:** Benötigt mehr Rechenleistung (insbesondere Fließkommaarithmetik) als einfache Filter. Dies kann auf kleineren Mikrocontrollern eine Herausforderung sein.
-- **Modellabhängigkeit:** Die Leistung des Filters hängt stark von der Genauigkeit des Systemmodells ab. Ein ungenaues Modell kann zu schlechten Schätzungen führen.
-- **Tuning:** Der Filter hat mehrere Parameter (Prozessrauschkovarianz Q, Messrauschkovarianz R), die sorgfältig "getunt" werden müssen, um eine optimale Leistung zu erzielen. Dies ist oft ein iterativer, empirischer Prozess.
+| Stufe | Technik | Zweck |
+| :--- | :--- | :--- |
+| **1** | **Differenzielle Messung** | Grundlage: Erfassung des Rohsignals mit Unterdrückung von Gleichtaktstörungen. |
+| **2** | **EMA-Filter** | Erste Glättung: Dämpfung von hochfrequenten Rauschspitzen im Rohsignal. |
+| **3** | **Kalman-Filter** | Finale Schätzung: Optimale, adaptive Filterung des Signals basierend auf einem Systemmodell. |
 
-## Zusammenfassung
-
-| Technik | Vorteile | Nachteile | Komplexität (Implementierung) |
-| :--- | :--- | :--- | :--- |
-| **Differenzielle Messung** | Gleichtaktstörungs-Unterdrückung | Benötigt 2 synchrone ADCs | Niedrig |
-| **Hardware-Tiefpassfilter**| Einfach, entlastet Software | Phasenverschiebung, Abstim-mung nötig | Niedrig (Hardware) |
-| **Oversampling** | Verbessert SNR, keine Hardware | Höhere CPU-Last | Niedrig (Software) |
-| **Kalman-Filter** | Optimale Glättung, geringe Latenz| Komplex, rechenintensiv, Tuning | Hoch (Software) |
-
-Für die aktuelle Anwendung wäre eine Kombination aus der **differenziellen Messung** und **Oversampling** ein guter erster Schritt. Wenn das Rauschen weiterhin ein Problem darstellt, könnte ein **Kalman-Filter** als fortgeschrittene Softwarelösung implementiert werden, um die Regelungsgüte, insbesondere bei niedrigen Drehzahlen, signifikant zu verbessern.
+Diese Kaskade sorgt dafür, dass aus dem stark verrauschten Signal eines einfachen Bürstenmotors eine zuverlässige Geschwindigkeitsinformation für den PI-Regler extrahiert werden kann.

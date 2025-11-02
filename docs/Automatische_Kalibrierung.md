@@ -1,3 +1,5 @@
+> **Hinweis:** Dieses Dokument beschreibt ein geplantes zukünftiges Feature, das in der aktuellen Softwareversion noch nicht implementiert ist. Es dient als Konzept für die Weiterentwicklung.
+
 # Konzept für eine automatische Kalibrierungsroutine
 
 Eine automatische Kalibrierungsroutine ist ein Prozess, bei dem der Decoder selbstständig die spezifischen Eigenschaften des angeschlossenen Motors ermittelt. Dies ermöglicht eine optimale Anpassung des Regelalgorithmus an den jeweiligen Motor, ohne dass der Benutzer manuell komplexe Parameter einstellen muss.

@@ -1,3 +1,5 @@
+> **Hinweis:** Dieses Dokument beschreibt ein geplantes zukünftiges Feature, das in der aktuellen Softwareversion noch nicht implementiert ist. Es dient als Konzept für die Weiterentwicklung.
+
 # Konzept für einen "Rangiermodus"
 
 Ein "Rangiermodus" (engl. "shunting mode" oder "switching mode") ist eine spezielle Betriebsart für Modellbahn-Lokomotiven, die extrem langsame und präzise Fahrten ermöglicht, wie sie beim Rangieren von Waggons im Vorbild üblich sind.
