@@ -143,7 +143,7 @@ void dma_irq_handler() {
 
 void update_pwm_duty_cycle() {
     uint16_t level = map(current_pwm, 0, 255, 0, PWM_WRAP_VALUE);
-    if (forward) {
+    if (motor_forward) {
         pwm_set_gpio_level(pwmAPin, level);
         pwm_set_gpio_level(pwmBPin, 0);
     } else {
@@ -234,7 +234,7 @@ const int ramp_step_delay_ms = 20; ///< Delay between speed steps during ramps.
 //== Global Motor & PWM State Variables ==
 volatile int target_speed = 0; ///< The desired speed for the motor, set by the state machine.
 volatile int current_pwm = 0;  ///< The current PWM duty cycle (0-255), calculated by the P-controller. Volatile for interrupt access.
-volatile bool forward = true;  ///< Current direction of the motor. true for forward, false for reverse.
+volatile bool motor_motor_forward = true;  ///< Current direction of the motor. true for motor_forward, false for reverse.
 
 #ifndef USE_RP2040_LOWLEVEL
 struct repeating_timer pwm_timer; ///< Holds the repeating timer instance for the PWM cycle.
@@ -333,7 +333,7 @@ bool pwm_on_callback(struct repeating_timer *t) {
     // Set pins to OUTPUT to drive the H-bridge
     pinMode(pwmAPin, OUTPUT);
     pinMode(pwmBPin, OUTPUT);
-    if (forward) {
+    if (motor_forward) {
       digitalWrite(pwmAPin, HIGH);
       digitalWrite(pwmBPin, LOW);
     } else {
@@ -511,9 +511,9 @@ void loop() {
 
       // Run dither sequence for 80ms
       if (time_in_state < 80) {
-        // 100 Hz means a 10ms period. 5ms forward, 5ms reverse.
+        // 100 Hz means a 10ms period. 5ms motor_forward, 5ms reverse.
         bool dither_direction = (time_in_state / 5) % 2 == 0;
-        forward = dither_direction; // Directly control direction
+        motor_forward = dither_direction; // Directly control direction
         current_pwm = max_speed * 0.15; // 15% duty cycle
       } else {
         // Dither complete. Transition to ramp up.
@@ -574,7 +574,7 @@ void loop() {
 
     case CHANGE_DIRECTION:
      if (time_in_state >= 500) { // A brief 500ms delay for the fast blink
-        forward = !forward; // Change direction
+        motor_forward = !motor_forward; // Change direction
         pi_controller.reset(); // Reset integral error on direction change
         current_state = MOTOR_DITHER;
         state_start_ms = current_millis;
