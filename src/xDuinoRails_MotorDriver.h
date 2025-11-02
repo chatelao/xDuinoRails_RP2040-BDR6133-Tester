@@ -48,6 +48,8 @@ public:
     int getCurrentSpeed();
 
 private:
+    static XDuinoRails_MotorDriver* instance; // Static instance pointer
+
     // Pin numbers
     uint8_t _inaPin;
     uint8_t _inbPin;
