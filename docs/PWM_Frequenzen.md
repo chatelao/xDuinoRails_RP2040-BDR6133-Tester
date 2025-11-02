@@ -1,56 +1,41 @@
-# Unterstützung für verschiedene PWM-Frequenzen und deren Auswirkungen
+# PWM-Ansteuerung und Frequenzwahl
 
-Die Pulsweitenmodulation (PWM) ist die Kerntechnologie zur Ansteuerung des Motors. Die Frequenz, mit der die PWM-Signale gesendet werden, hat erhebliche Auswirkungen auf die Motorleistung, die Effizienz des Motortreibers und die Geräuschentwicklung.
+Die Pulsweitenmodulation (PWM) ist die Kerntechnologie zur Regelung der Motorleistung. Dieses Dokument beschreibt die aktuelle Implementierung und die Auswirkungen der gewählten PWM-Frequenz.
 
-## Grundlagen der PWM-Frequenz
+## Aktuelle Implementierung: Hardware-beschleunigtes PWM
 
-Die PWM-Frequenz bestimmt, wie oft der Motor pro Sekunde ein- und ausgeschaltet wird.
-- **Niedrige Frequenzen** bedeuten längere, aber weniger Zyklen pro Sekunde.
-- **Hohe Frequenzen** bedeuten kürzere, aber sehr viele Zyklen pro Sekunde.
+Das Projekt nutzt einen Hardware-Timer des RP2040, um eine nicht-blockierende PWM-Ansteuerung zu realisieren. Dies ist eine wesentliche Abkehr von einer einfachen, softwarebasierten `analogWrite()`-Implementierung.
 
-Die Wahl der richtigen Frequenz ist immer ein Kompromiss zwischen verschiedenen Faktoren.
+- **PWM-Frequenz:** Die Basisfrequenz ist auf **1 kHz** festgelegt.
+- **Timer-Logik:** Ein wiederholender Timer (`repeating_timer`) löst den Beginn jedes PWM-Zyklus aus (die ON-Phase). Innerhalb dieses Timers wird ein zweiter, einmaliger Alarm (`one-shot alarm`) für das Ende der ON-Phase geplant. Die Callback-Funktion dieses Alarms führt dann die BEMF-Messung durch.
 
-## Auswirkungen verschiedener Frequenzbereiche
+**Vorteile dieser Implementierung:**
+- **Nicht-blockierend:** Die CPU wird nicht durch `delay()`-Aufrufe blockiert und steht für andere Aufgaben (Zustandslogik, Kommunikation) zur Verfügung.
+- **Präzises Timing:** Das Timing der PWM-Flanken und der BEMF-Messung ist hardware-genau und unabhängig von der Auslastung des Hauptprozessors.
+- **Effizient:** Reduziert die CPU-Last erheblich im Vergleich zu einer Software-PWM.
 
-### 1. Niedrige Frequenzen (< 1 kHz)
+## Analyse der aktuellen PWM-Frequenz (1 kHz)
 
-- **Vorteile:**
-    - **Geringe Schaltverluste:** Der Motortreiber (H-Brücke) schaltet seltener, was zu weniger Abwärme und höherer Effizienz im Treiber führt.
-- **Nachteile:**
-    - **Hörbares Pfeifen:** Der Motor und die Wicklungen können hörbar im Takt der PWM-Frequenz schwingen, was oft als störendes Pfeifen oder Summen wahrgenommen wird. Für Modellbahnen ist dies meist unerwünscht.
-    - **Höherer Drehmoment-Ripple:** Der Motorlauf wird "ruckeliger", da der Strom in den Wicklungen zwischen den Impulsen stärker schwankt. Dies führt zu ungleichmäßiger Kraftentfaltung, besonders bei niedrigen Drehzahlen.
+Die Wahl von 1 kHz ist ein bewusster Kompromiss für die erste Implementierung.
 
-### 2. Mittlere Frequenzen (ca. 1 kHz - 20 kHz)
+### Vorteile bei 1 kHz
 
-Dieser Bereich stellt oft einen guten Kompromiss dar. Die aktuell im Projekt verwendeten 1 kHz fallen in diese Kategorie.
+- **Geringe Schaltverluste:** Der BDR6133-Motortreiber schaltet relativ selten, was die thermische Belastung minimiert und die Effizienz erhöht.
+- **Großes Zeitfenster für BEMF-Messung:** Ein 1-kHz-Zyklus dauert 1000 Mikrosekunden (`µs`). Selbst bei 90% PWM-Tastverhältnis bleiben 100 µs für das Abschalten der Brücke, das Einschwingen der Spannung und die ADC-Messung. Dies ist ausreichend Zeit für die aktuell implementierte `delayMicroseconds(100)`-Pause.
 
-- **Vorteile:**
-    - **Geringere Geräuschentwicklung:** Ab ca. 16-18 kHz liegt die Frequenz außerhalb des menschlichen Hörbereichs, was den Motorbetrieb nahezu geräuschlos macht.
-    - **Sanfterer Motorlauf:** Der Drehmoment-Ripple wird reduziert, was zu einem gleichmäßigeren und präziseren Lauf führt.
-- **Nachteile:**
-    - **Erhöhte Schaltverluste:** Der Motortreiber wird wärmer, da er häufiger schaltet. Die Effizienz sinkt leicht.
-    - **Auswirkungen auf den Eisenkern:** Höhere Frequenzen können zu erhöhten Wirbelstromverlusten im Eisenkern des Motors führen (sogenannte "Eisenverluste").
+### Nachteile bei 1 kHz
 
-### 3. Hohe Frequenzen (> 20 kHz, Ultraschallbereich)
+- **Hörbares Betriebsgeräusch:** Motoren neigen dazu, bei Frequenzen im menschlichen Hörbereich (bis ca. 18 kHz) ein leises Pfeifen oder Summen zu erzeugen. Dies ist bei 1 kHz der Fall und für hochwertige Modellbahnanwendungen oft unerwünscht.
+- **Drehmoment-Ripple:** Der Strom durch die Motorwicklungen ist nicht vollständig geglättet, was besonders bei sehr niedrigen Drehzahlen zu einem leicht unruhigen Lauf führen kann.
 
-- **Vorteile:**
-    - **Völlig geräuschlos:** Jede Geräuschentwicklung durch die PWM-Ansteuerung wird eliminiert.
-    - **Sehr sanfter Lauf:** Der Motorstrom ist nahezu konstant (DC), was zu einem extrem gleichmäßigen Drehmoment und exzellenter Regelbarkeit führt.
-- **Nachteile:**
-    - **Hohe Schaltverluste:** Dies ist der größte Nachteil. Der Motortreiber kann sehr heiß werden und benötigt unter Umständen eine Kühlung. Die maximale Schaltfrequenz des Treibers (z.B. BDR6133) muss beachtet werden.
-    - **Elektromagnetische Störungen (EMI):** Schnelles Schalten kann zu erhöhter Störabstrahlung führen, was andere elektronische Komponenten beeinflussen könnte.
-    - **Herausforderungen bei der BEMF-Messung:** Die Zeitfenster für die BEMF-Messung werden extrem kurz. Dies stellt hohe Anforderungen an die Geschwindigkeit des ADCs und die Präzision der Synchronisation. Der Einschwingvorgang nach dem Abschalten der PWM-Brücke benötigt Zeit, die bei sehr hohen Frequenzen möglicherweise nicht mehr ausreicht.
+## Ausblick: Umstellung auf eine höhere PWM-Frequenz
 
-## Vorhersage der Auswirkungen im Projekt
+Für zukünftige Versionen ist eine Erhöhung der PWM-Frequenz in den Ultraschallbereich (z.B. > 18 kHz) wünschenswert, um den Motorbetrieb lautlos zu machen und den Motorlauf weiter zu glätten. Eine solche Umstellung ist jedoch nicht trivial und hat mehrere Konsequenzen:
 
-Eine Erhöhung der PWM-Frequenz von den aktuellen 1 kHz hätte folgende Konsequenzen:
-
-- **1 kHz -> 18 kHz (empfohlener Schritt):**
-    - **Positiv:** Das leise Motorpfeifen würde komplett verschwinden. Der Motorlauf, insbesondere im unteren Drehzahlbereich, würde spürbar sanfter werden.
-    - **Negativ:** Die Schaltverluste im BDR6133 würden zunehmen. Es müsste beobachtet werden, ob die Erwärmung im zulässigen Rahmen bleibt. Das Zeitfenster für die BEMF-Messung schrumpft von 1 ms auf ca. 55 µs. Die aktuelle Implementierung mit `delayMicroseconds(100)` wäre nicht mehr möglich und müsste durch eine präzisere, schnellere Timing-Methode (z.B. über Hardware-Timer) ersetzt werden.
+1.  **Stark reduziertes Zeitfenster:** Bei 20 kHz dauert ein Zyklus nur noch 50 µs. Das Zeitfenster für die BEMF-Messung wird extrem kurz. Die aktuelle `delayMicroseconds(100)`-Pause wäre länger als der gesamte PWM-Zyklus und ist somit **nicht mehr möglich**. Das Timing müsste komplett überarbeitet werden, um mit wenigen Mikrosekunden auszukommen.
+2.  **Erhöhte Schaltverluste:** Der Motortreiber würde 20-mal häufiger schalten, was zu einer deutlich höheren Temperaturentwicklung führt. Es müsste evaluiert werden, ob der Treiber dies ohne zusätzliche Kühlung bewältigen kann.
+3.  **Schnellere ADC-Messung:** Die ADC-Wandlung müsste schnell und präzise innerhalb des kurzen Zeitfensters erfolgen.
 
 ## Fazit
 
-Die Implementierung einer konfigurierbaren PWM-Frequenz wäre ein wertvolles Feature. Eine Frequenz im Bereich von **16 kHz bis 25 kHz** ist für hochwertige Modellbahn-Decoder üblich und erstrebenswert, da sie einen geräuschlosen und sehr sanften Betrieb ermöglicht.
-
-Allerdings muss bei einer Umstellung die gesamte Kette von der PWM-Erzeugung über das Timing der BEMF-Messung bis hin zur ADC-Geschwindigkeit angepasst werden. Die thermische Belastung des Motortreibers ist dabei ein kritischer Punkt, der überwacht werden muss.
+Die aktuelle 1-kHz-PWM, die über Hardware-Timer realisiert wird, ist eine robuste und effiziente Grundlage. Sie bietet ein stabiles System mit viel Zeit für eine zuverlässige BEMF-Messung. Eine zukünftige Erhöhung der Frequenz zur Geräuschreduzierung ist ein logischer nächster Schritt, erfordert aber eine signifikante Überarbeitung des BEMF-Mess-Timings und eine sorgfältige Analyse der thermischen Auswirkungen auf den Motortreiber.
