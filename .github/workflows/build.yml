@@ -22,6 +22,18 @@ jobs:
         with:
           python-version: '3.9'
 
+      - name: Cache PlatformIO dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            examples/Demo/.pio
+            examples/MotorTuning/.pio
+          key: pio-cache-${{ runner.os }}-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            pio-cache-${{ runner.os }}-
+
       - name: Install PlatformIO and dependencies
         run: |
           python -m pip install --upgrade pip
