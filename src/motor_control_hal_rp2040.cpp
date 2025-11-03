@@ -22,7 +22,7 @@
 // Defines the core operational parameters for the hardware-timed control loop.
 const uint PWM_FREQUENCY_HZ = 25000; // 25kHz PWM frequency for motor control.
 // RP2040 sys clock is 125MHz. PWM counter wraps at this value for 25kHz.
-static uint16_t PWM_WRAP_VALUE = (125000000 / PWM_FREQUENCY_HZ) - 1;
+static uint16_t PWM_WRAP_VALUE = (125'000'000 / PWM_FREQUENCY_HZ) - 1;
 // 10us delay after PWM off-time before ADC read, allows BEMF to stabilize.
 const uint BEMF_MEASUREMENT_DELAY_US = 10;
 // Buffer for DMA to store ADC samples. Must be a power of 2 for the ring buffer.
@@ -86,8 +86,10 @@ static void dma_irq_handler() {
  * which will then use DMA to fill the buffer.
  */
 static int64_t delayed_adc_trigger_callback(alarm_id_t id, void *user_data) {
+    // Manually trigger the ADC to start its round-robin conversion sequence.
     adc_run(true);
-    return 0; // Do not reschedule
+    // A return value of 0 ensures this one-shot timer does not run again.
+    return 0;
 }
 
 /**
@@ -97,7 +99,9 @@ static int64_t delayed_adc_trigger_callback(alarm_id_t id, void *user_data) {
  * hardware timer to trigger the ADC measurement after a short delay.
  */
 static void on_pwm_wrap() {
+    // Clear the PWM interrupt flag that triggered this ISR.
     pwm_clear_irq(motor_pwm_slice);
+    // Schedule the ADC to be triggered after the specified delay.
     add_alarm_in_us(BEMF_MEASUREMENT_DELAY_US, delayed_adc_trigger_callback, NULL, true);
 }
 
