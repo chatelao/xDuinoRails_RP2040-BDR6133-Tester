@@ -6,7 +6,7 @@ XDuinoRails_MotorDriver* XDuinoRails_MotorDriver::instance = nullptr;
 
 XDuinoRails_MotorDriver::XDuinoRails_MotorDriver(uint8_t inaPin, uint8_t inbPin, uint8_t bemfaPin, uint8_t bemfbPin)
     : _inaPin(inaPin), _inbPin(inbPin), _bemfaPin(bemfaPin), _bemfbPin(bemfbPin),
-      pi_controller(Kp_normal, Ki_normal, max_speed),
+      _pi_controller(Kp_normal, Ki_normal, max_speed),
       bemfKalmanFilter(BEMF_MEA_E, BEMF_EST_E, BEMF_Q) {
     instance = this; // Set the static instance pointer
 }
@@ -102,7 +102,7 @@ void XDuinoRails_MotorDriver::coast() {
 
 void XDuinoRails_MotorDriver::changeDirection() {
     motor_forward = !motor_forward;
-    pi_controller.reset();
+    _pi_controller.reset();
 }
 
 bool XDuinoRails_MotorDriver::isMoving() {
@@ -138,14 +138,14 @@ void XDuinoRails_MotorDriver::on_bemf_update(int measured_bemf) {
     if (instance->pi_controller_enabled) {
         bool is_in_rangiermodus = (instance->target_speed > 0 && instance->target_speed <= instance->rangiermodus_speed_threshold);
         if (is_in_rangiermodus != instance->was_in_rangiermodus) {
-            instance->pi_controller.reset();
+            instance->_pi_controller.reset();
         }
         instance->was_in_rangiermodus = is_in_rangiermodus;
 
-        instance->pi_controller.setGains(is_in_rangiermodus ? instance->Kp_rangier : instance->Kp_normal, is_in_rangiermodus ? instance->Ki_rangier : instance->Ki_normal);
+        instance->_pi_controller.setGains(is_in_rangiermodus ? instance->Kp_rangier : instance->Kp_normal, is_in_rangiermodus ? instance->Ki_rangier : instance->Ki_normal);
 
         int measured_speed = map(instance->measured_speed_pps, 0, 500, 0, 255);
-        instance->current_pwm = instance->pi_controller.calculate(instance->target_speed, measured_speed, instance->current_pwm);
+        instance->current_pwm = instance->_pi_controller.calculate(instance->target_speed, measured_speed, instance->current_pwm);
     }
 }
 #else
@@ -178,14 +178,14 @@ int64_t XDuinoRails_MotorDriver::pwm_off_callback(alarm_id_t alarm_id, void *use
     if (instance->pi_controller_enabled) {
         bool is_in_rangiermodus = (instance->target_speed > 0 && instance->target_speed <= instance->rangiermodus_speed_threshold);
         if (is_in_rangiermodus != instance->was_in_rangiermodus) {
-            instance->pi_controller.reset();
+            instance->_pi_controller.reset();
         }
         instance->was_in_rangiermodus = is_in_rangiermodus;
 
-        instance->pi_controller.setGains(is_in_rangiermodus ? instance->Kp_rangier : instance->Kp_normal, is_in_rangiermodus ? instance->Ki_rangier : instance->Ki_normal);
+        instance->_pi_controller.setGains(is_in_rangiermodus ? instance->Kp_rangier : instance->Kp_normal, is_in_rangiermodus ? instance->Ki_rangier : instance->Ki_normal);
 
         int measured_speed = map(instance->measured_speed_pps, 0, 500, 0, 255);
-        instance->current_pwm = instance->pi_controller.calculate(instance->target_speed, measured_speed, instance->current_pwm);
+        instance->current_pwm = instance->_pi_controller.calculate(instance->target_speed, measured_speed, instance->current_pwm);
     }
 
     return 0;
