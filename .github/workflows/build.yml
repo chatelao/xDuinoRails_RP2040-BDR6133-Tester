@@ -28,8 +28,17 @@ jobs:
           pip install --upgrade platformio
           pip install -r scripts/requirements.txt
 
-      - name: Build project
-        run: pio run
+      - name: Build Demo Example
+        run: pio run --project-dir examples/Demo
+
+      - name: Rename Demo Artifact
+        run: mv examples/Demo/.pio/build/seeed_xiao_rp2040/firmware.uf2 Demo.uf2
+
+      - name: Build MotorTuning Example
+        run: pio run --project-dir examples/MotorTuning
+
+      - name: Rename MotorTuning Artifact
+        run: mv examples/MotorTuning/.pio/build/seeed_xiao_rp2040/firmware.uf2 MotorTuning.uf2
 
       - name: Run simulation test
         run: pio test --environment native
@@ -42,5 +51,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            .pio/build/seeed_xiao_rp2040/firmware.uf2
+            Demo.uf2
+            MotorTuning.uf2
             simulation_graph.png
