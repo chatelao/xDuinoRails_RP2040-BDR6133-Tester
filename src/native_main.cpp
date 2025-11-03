@@ -4,7 +4,7 @@
 #include <fstream>
 #include <vector>
 #include <cassert>
-#include "PIController.h"
+#include "pi_controller.h"
 
 // Simple motor model
 class Motor {
@@ -25,7 +25,7 @@ private:
 };
 
 void test_pi_controller_simulation() {
-    PIController controller(0.1, 0.1, 255);
+    pi_controller controller(0.1, 0.1, 255);
     Motor motor(0.1);
     int target_speed = 200;
     int current_pwm = 0;

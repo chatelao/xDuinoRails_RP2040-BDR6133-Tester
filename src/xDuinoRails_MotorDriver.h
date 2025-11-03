@@ -9,7 +9,7 @@
 #include <cstdint>
 #endif
 
-#include "PIController.h"
+#include "pi_controller.h"
 
 class XDuinoRails_MotorDriver {
 public:
@@ -61,7 +61,7 @@ private:
     const float Ki_normal = 0.1;
     const float Kp_rangier = 0.15;
     const float Ki_rangier = 0.05;
-    PIController pi_controller;
+    pi_controller pi_controller;
     bool was_in_rangiermodus = false;
 
     // BEMF Pulse Counting

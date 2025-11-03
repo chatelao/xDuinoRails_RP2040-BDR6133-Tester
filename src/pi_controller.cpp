@@ -1,4 +1,4 @@
-#include "PIController.h"
+#include "pi_controller.h"
 
 // A utility function for constraining a value within a range
 template<typename T>
@@ -9,10 +9,10 @@ T constrain(T value, T min_val, T max_val) {
 }
 
 
-PIController::PIController(float kp, float ki, int max_output)
+pi_controller::pi_controller(float kp, float ki, int max_output)
     : kp_(kp), ki_(ki), integral_error_(0.0), max_output_(max_output), action_(STEADY) {}
 
-int PIController::calculate(int target_speed, int measured_speed, int current_pwm) {
+int pi_controller::calculate(int target_speed, int measured_speed, int current_pwm) {
     int error = target_speed - measured_speed;
 
     // Conditional Integration: only accumulate error if the output is not saturated.
@@ -34,15 +34,15 @@ int PIController::calculate(int target_speed, int measured_speed, int current_pw
     return new_pwm;
 }
 
-void PIController::reset() {
+void pi_controller::reset() {
     integral_error_ = 0.0;
 }
 
-void PIController::setGains(float kp, float ki) {
+void pi_controller::setGains(float kp, float ki) {
     kp_ = kp;
     ki_ = ki;
 }
 
-ControllerAction PIController::getAction() const {
+ControllerAction pi_controller::getAction() const {
     return action_;
 }

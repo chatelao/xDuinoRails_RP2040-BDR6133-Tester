@@ -11,9 +11,9 @@ enum ControllerAction {
 };
 
 
-class PIController {
+class pi_controller {
 public:
-    PIController(float kp, float ki, int max_output);
+    pi_controller(float kp, float ki, int max_output);
     int calculate(int target_speed, int measured_speed, int current_pwm);
     void reset();
     void setGains(float kp, float ki);
