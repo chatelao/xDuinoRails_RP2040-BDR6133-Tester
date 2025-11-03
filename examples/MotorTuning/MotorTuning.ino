@@ -1,169 +1,207 @@
+/**
+ * @file MotorTuning.ino
+ * @brief Beispiel-Sketch zur automatischen Ermittlung optimaler Motor-Regelparameter.
+ *
+ * Dieser Sketch führt einen mehrstufigen, automatisierten Test durch, um die besten
+ * Einstellungen für den Kalman-Filter und den PI-Regler der xDuinoRails_MotorDriver-Bibliothek
+ * zu finden. Der Prozess wird für die Vorwärts- und Rückwärtsrichtung getrennt durchgeführt.
+ *
+ * Ablauf:
+ * 1. Der Motor wird einem standardisierten Bewegungsprofil ausgesetzt (Beschleunigen, Halten, Abbremsen).
+ * 2. Währenddessen wird ein "Stabilitäts-Score" berechnet, der die Abweichung zwischen Soll- und Ist-Geschwindigkeit misst.
+ * 3. Der Sketch testet iterativ verschiedene Kombinationen von Regelparametern.
+ * 4. Die Parameter-Kombination mit dem niedrigsten Score (höchste Stabilität) wird als Optimum gespeichert.
+ * 5. Am Ende werden die empfohlenen Einstellungen für beide Fahrtrichtungen auf dem Seriellen Monitor ausgegeben.
+ *
+ * @attention WICHTIG: Für diesen Test muss der Motor frei und ohne Last laufen können!
+ *             Der gesamte Vorgang kann mehrere Minuten dauern.
+ */
 #include <xDuinoRails_MotorDriver.h>
 
-//== Pin Definitions ==
-// IMPORTANT: Make sure these pins match your hardware setup.
+//================================================================================
+// PIN-DEFINITIONEN
+//================================================================================
+// WICHTIG: Stellen Sie sicher, dass diese Pins mit Ihrem Hardware-Aufbau übereinstimmen.
 const int INA_PIN = D7;
 const int INB_PIN = D8;
 const int BEMFA_PIN = A3;
 const int BEMFB_PIN = A2;
 
-// Instantiate the motor driver library
+// Instanziieren der Motortreiber-Bibliothek
 XDuinoRails_MotorDriver motor(INA_PIN, INB_PIN, BEMFA_PIN, BEMFB_PIN);
 
-// State machine for the tuning process
+//================================================================================
+// HAUPT-ZUSTANDSSTEUERUNG (TUNING-PROZESS)
+//================================================================================
+// Definiert die einzelnen Phasen des gesamten Tuning-Prozesses.
 enum TuningState {
-    SETUP,
-    TUNING_KALMAN_FORWARD,
-    TUNING_PI_FORWARD,
-    TUNING_STALL_FORWARD,
-    CHANGING_DIRECTION_TO_REVERSE,
-    TUNING_KALMAN_REVERSE,
-    TUNING_PI_REVERSE,
-    TUNING_STALL_REVERSE,
-    DONE
+    SETUP,                          // Anfangsphase, wartet kurz vor dem Start.
+    TUNING_KALMAN_FORWARD,          // Kalman-Filter für Vorwärtslauf tunen.
+    TUNING_PI_FORWARD,              // PI-Regler für Vorwärtslauf tunen.
+    TUNING_STALL_FORWARD,           // Platzhalter für Blockiererkennung (vorwärts).
+    CHANGING_DIRECTION_TO_REVERSE,  // Motor anhalten und Richtung wechseln.
+    TUNING_KALMAN_REVERSE,          // Kalman-Filter für Rückwärtslauf tunen.
+    TUNING_PI_REVERSE,              // PI-Regler für Rückwärtslauf tunen.
+    TUNING_STALL_REVERSE,           // Platzhalter für Blockiererkennung (rückwärts).
+    DONE                            // Prozess abgeschlossen, Ergebnisse anzeigen.
 };
-TuningState currentState = SETUP;
-unsigned long stateStartTime = 0;
+TuningState currentState = SETUP;   // Aktueller Zustand im Tuning-Prozess.
+unsigned long stateStartTime = 0;   // Zeitstempel für den Beginn des aktuellen Zustands.
 
-// Variables for the movement profile and scoring
+//================================================================================
+// ZUSTANDSSTEUERUNG (BEWEGUNGSPROFIL)
+//================================================================================
+// Definiert die Phasen des standardisierten Bewegungsprofils für einen einzelnen Testlauf.
 enum ProfileState {
-    PROFILE_IDLE,
-    PROFILE_ACCEL_LOW,
-    PROFILE_HOLD_LOW,
-    PROFILE_ACCEL_HIGH,
-    PROFILE_HOLD_HIGH,
-    PROFILE_DECEL,
-    PROFILE_COMPLETE
+    PROFILE_IDLE,       // Wartet auf Start.
+    PROFILE_ACCEL_LOW,  // Auf niedrige Geschwindigkeit beschleunigen.
+    PROFILE_HOLD_LOW,   // Niedrige Geschwindigkeit halten.
+    PROFILE_ACCEL_HIGH, // Auf hohe Geschwindigkeit beschleunigen.
+    PROFILE_HOLD_HIGH,  // Hohe Geschwindigkeit halten.
+    PROFILE_DECEL,      // Zum Stillstand abbremsen.
+    PROFILE_COMPLETE    // Profil abgeschlossen.
 };
-ProfileState currentProfileState = PROFILE_IDLE;
-unsigned long profileStateStartTime = 0;
-double stabilityScore = 0;
-bool profileRunning = false;
+ProfileState currentProfileState = PROFILE_IDLE; // Aktueller Zustand im Bewegungsprofil.
+unsigned long profileStateStartTime = 0;         // Zeitstempel für den Beginn des Profil-Zustands.
+double stabilityScore = 0;                       // Kumulierter Score für den aktuellen Testlauf.
+bool profileRunning = false;                     // Flag, ob gerade ein Bewegungsprofil aktiv ist.
 
-// -- Parameters for the tuning algorithm --
-// Test values for Kalman filter's measurement noise
+//================================================================================
+// PARAMETER FÜR DEN TUNING-ALGORITHMUS
+//================================================================================
+// --- Zu testende Werte für den Kalman-Filter ---
+// e_mea: "measurement uncertainty" - Wie stark rauschen die Messwerte? (höher = mehr Glättung)
 const float kalman_e_mea_values[] = {10.0, 20.0, 40.0, 80.0};
 const int num_kalman_e_mea_values = sizeof(kalman_e_mea_values) / sizeof(kalman_e_mea_values[0]);
 
-// Test values for Kalman filter's process noise
+// q: "process noise" - Wie stark ändert sich die Geschwindigkeit von selbst? (niedriger bei hoher Trägheit)
 const float kalman_q_values[] = {0.01, 0.05, 0.1, 0.2};
 const int num_kalman_q_values = sizeof(kalman_q_values) / sizeof(kalman_q_values[0]);
 
-// Test values for PI controller gains
+// --- Zu testende Werte für den PI-Regler ---
+// Kp: Proportionalanteil - Wie stark wird auf die aktuelle Abweichung reagiert?
 const float pi_kp_values[] = {0.5, 1.0, 2.0, 4.0};
 const int num_pi_kp_values = sizeof(pi_kp_values) / sizeof(pi_kp_values[0]);
+// Ki: Integralanteil - Wie stark werden vergangene Abweichungen korrigiert?
 const float pi_ki_values[] = {5.0, 10.0, 20.0, 30.0};
 const int num_pi_ki_values = sizeof(pi_ki_values) / sizeof(pi_ki_values[0]);
 
-
-// Variables to store the best found parameters
-double bestScore = -1.0;
+//================================================================================
+// SPEICHER FÜR DIE BESTEN GEFUNDENEN PARAMETER
+//================================================================================
+double bestScore = -1.0; // Speichert den bisher besten (niedrigsten) Score.
+// Vorwärts
 float best_kalman_e_mea_forward = 0.0, best_kalman_q_forward = 0.0;
 float best_pi_kp_forward = 0.0, best_pi_ki_forward = 0.0;
+// Rückwärts
 float best_kalman_e_mea_reverse = 0.0, best_kalman_q_reverse = 0.0;
 float best_pi_kp_reverse = 0.0, best_pi_ki_reverse = 0.0;
 
-
-// Indices for iterating through the test values
+// Indizes zur Iteration durch die Test-Parameter-Arrays.
 int idx1 = 0;
 int idx2 = 0;
 
-
-// Function prototypes
+// Funktions-Prototypen
 void startMovementProfile();
-double runMovementProfileAndGetScore();
+bool updateMovementProfile();
 
 
+/**
+ * @brief Initialisierung des Programms.
+ */
 void setup() {
     Serial.begin(115200);
-    // Wait for the serial port to be ready.
     while (!Serial) {
-        delay(10);
+        delay(10); // Auf serielle Verbindung warten.
     }
 
     Serial.println("===================================");
     Serial.println("xDuinoRails: Motor Tuning Sketch");
     Serial.println("===================================");
-    Serial.println("This sketch will perform an automatic tuning sequence.");
-    Serial.println("Please ensure the motor can run freely without load.");
-    Serial.println("The process will take several minutes.");
+    Serial.println("Dieser Sketch fuehrt eine automatische Tuning-Sequenz durch.");
+    Serial.println("Bitte stellen Sie sicher, dass der Motor frei und ohne Last laufen kann.");
+    Serial.println("Der Prozess wird mehrere Minuten dauern.");
     Serial.println();
 
-    // Initialize the motor driver
-    motor.begin();
+    motor.begin(); // Motortreiber initialisieren.
     stateStartTime = millis();
 }
 
+/**
+ * @brief Hauptschleife des Programms.
+ */
 void loop() {
-    // If a movement profile is active, it takes priority.
-    // We keep calling its update function until it's complete.
+    // Wenn ein Bewegungsprofil aktiv ist, hat dessen Aktualisierung Vorrang.
+    // Die Haupt-Zustandsmaschine pausiert, bis das Profil abgeschlossen ist.
     if (profileRunning) {
         updateMovementProfile();
-        return; // Don't run the main state machine until the profile is done.
+        return;
     }
 
-    // The main motor update must still be called on every loop.
+    // Die update()-Methode der Bibliothek muss in jeder Schleife aufgerufen werden.
     motor.update();
 
     unsigned long timeInState = millis() - stateStartTime;
 
+    // Haupt-Zustandsmaschine für den gesamten Tuning-Prozess
     switch (currentState) {
         case SETUP:
-            // Wait for 5 seconds before starting the tuning process
+            // Kurze Wartezeit vor Beginn, damit der Benutzer den Seriellen Monitor öffnen kann.
             if (timeInState > 5000) {
                 currentState = TUNING_KALMAN_FORWARD;
                 stateStartTime = millis();
-                Serial.println("Tuning Kalman Filter (Forward)...");
-                // Start the first test run
+                Serial.println("Beginne Tuning fuer Kalman-Filter (Vorwaerts)...");
+                // Ersten Testlauf starten.
                 motor.setKalmanGains(kalman_e_mea_values[idx1], kalman_q_values[idx2]);
                 startMovementProfile();
             }
             break;
 
         case TUNING_KALMAN_FORWARD:
-            // This case is entered after a movement profile completes.
-            // Check the score from the completed run.
+            // Dieser Zustand wird nach Abschluss eines Bewegungsprofils erreicht.
+            // Bewerte den Score des abgeschlossenen Laufs.
             if (bestScore < 0 || stabilityScore < bestScore) {
                 bestScore = stabilityScore;
                 best_kalman_e_mea_forward = kalman_e_mea_values[idx1];
                 best_kalman_q_forward = kalman_q_values[idx2];
             }
-            Serial.print("  Test complete. Score: ");
+            Serial.print("  Test abgeschlossen. Score: ");
             Serial.println(stabilityScore);
 
-            // Move to the next combination of parameters
+            // Gehe zur nächsten Parameter-Kombination.
             idx2++;
             if (idx2 >= num_kalman_q_values) {
                 idx2 = 0;
                 idx1++;
             }
 
-            // Check if we have tested all combinations
+            // Prüfen, ob alle Kombinationen getestet wurden.
             if (idx1 >= num_kalman_e_mea_values) {
-                // Tuning for this stage is done.
-                Serial.println("Kalman tuning (Forward) complete.");
-                Serial.print("Best Params: e_mea = ");
+                // Tuning für diese Phase ist abgeschlossen.
+                Serial.println("Kalman-Tuning (Vorwaerts) abgeschlossen.");
+                Serial.print("Beste Parameter: e_mea = ");
                 Serial.print(best_kalman_e_mea_forward);
                 Serial.print(", q = ");
                 Serial.println(best_kalman_q_forward);
 
-                // Apply the best settings before moving to the next stage
+                // Beste gefundene Einstellung für die nächste Phase übernehmen.
                 motor.setKalmanGains(best_kalman_e_mea_forward, best_kalman_q_forward);
 
+                // Zur nächsten Tuning-Phase wechseln.
                 currentState = TUNING_PI_FORWARD;
                 stateStartTime = millis();
 
-                // Reset for the next tuning stage
+                // Variablen für die nächste Phase zurücksetzen.
                 bestScore = -1.0;
                 idx1 = 0;
                 idx2 = 0;
 
-                Serial.println("\nTuning PI Controller (Forward)...");
+                Serial.println("\nBeginne Tuning fuer PI-Regler (Vorwaerts)...");
                 motor.setGains(pi_kp_values[idx1], pi_ki_values[idx2]);
                 startMovementProfile();
             } else {
-                // Start the next test run
-                Serial.print("Testing e_mea = ");
+                // Nächsten Testlauf starten.
+                Serial.print("Teste e_mea = ");
                 Serial.print(kalman_e_mea_values[idx1]);
                 Serial.print(", q = ");
                 Serial.println(kalman_q_values[idx2]);
@@ -173,14 +211,16 @@ void loop() {
             break;
 
         case TUNING_PI_FORWARD:
+            // Score des PI-Regler-Tests auswerten.
             if (bestScore < 0 || stabilityScore < bestScore) {
                 bestScore = stabilityScore;
                 best_pi_kp_forward = pi_kp_values[idx1];
                 best_pi_ki_forward = pi_ki_values[idx2];
             }
-             Serial.print("  Test complete. Score: ");
+            Serial.print("  Test abgeschlossen. Score: ");
             Serial.println(stabilityScore);
 
+            // Nächste PI-Parameter-Kombination.
             idx2++;
             if (idx2 >= num_pi_ki_values) {
                 idx2 = 0;
@@ -188,16 +228,20 @@ void loop() {
             }
 
             if (idx1 >= num_pi_kp_values) {
-                Serial.println("PI tuning (Forward) complete.");
-                Serial.print("Best Params: Kp = ");
+                // PI-Tuning (vorwärts) abgeschlossen.
+                Serial.println("PI-Tuning (Vorwaerts) abgeschlossen.");
+                Serial.print("Beste Parameter: Kp = ");
                 Serial.print(best_pi_kp_forward);
                 Serial.print(", Ki = ");
                 Serial.println(best_pi_ki_forward);
                 motor.setGains(best_pi_kp_forward, best_pi_ki_forward);
+
+                // Nächste Phase: Richtungswechsel.
                 currentState = CHANGING_DIRECTION_TO_REVERSE;
                 stateStartTime = millis();
             } else {
-                Serial.print("Testing Kp = ");
+                // Nächsten PI-Testlauf starten.
+                Serial.print("Teste Kp = ");
                 Serial.print(pi_kp_values[idx1]);
                 Serial.print(", Ki = ");
                 Serial.println(pi_ki_values[idx2]);
@@ -207,18 +251,21 @@ void loop() {
             break;
 
         case TUNING_STALL_FORWARD:
-            // Stall tuning is not implemented in this version
+            // Blockiererkennung wird in dieser Version nicht automatisch justiert.
             currentState = CHANGING_DIRECTION_TO_REVERSE;
             break;
 
         case CHANGING_DIRECTION_TO_REVERSE:
-            Serial.println("\nChanging direction to REVERSE...");
-            motor.setTargetSpeed(0, 500); // Stop the motor
+            Serial.println("\nWechsle auf RUECKWAERTSLAUF...");
+            motor.setTargetSpeed(0, 500); // Motor sanft stoppen.
+            // Warten bis Motor steht, dann Richtung wechseln.
             if (motor.getCurrentSpeed() == 0 && timeInState > 1000) {
                 motor.changeDirection();
                 currentState = TUNING_KALMAN_REVERSE;
                 stateStartTime = millis();
-                Serial.println("\nTuning Kalman Filter (Reverse)...");
+
+                Serial.println("\nBeginne Tuning fuer Kalman-Filter (Rueckwaerts)...");
+                // Variablen für den Rückwärtslauf zurücksetzen.
                 idx1 = 0;
                 idx2 = 0;
                 bestScore = -1.0;
@@ -228,35 +275,43 @@ void loop() {
             break;
 
         case TUNING_KALMAN_REVERSE:
+            // Score des Kalman-Tests (rückwärts) auswerten.
             if (bestScore < 0 || stabilityScore < bestScore) {
                 bestScore = stabilityScore;
                 best_kalman_e_mea_reverse = kalman_e_mea_values[idx1];
                 best_kalman_q_reverse = kalman_q_values[idx2];
             }
-            Serial.print("  Test complete. Score: ");
+            Serial.print("  Test abgeschlossen. Score: ");
             Serial.println(stabilityScore);
+
+            // Nächste Parameter-Kombination.
             idx2++;
             if (idx2 >= num_kalman_q_values) {
                 idx2 = 0;
                 idx1++;
             }
+
             if (idx1 >= num_kalman_e_mea_values) {
-                Serial.println("Kalman tuning (Reverse) complete.");
-                Serial.print("Best Params: e_mea = ");
+                // Kalman-Tuning (rückwärts) abgeschlossen.
+                Serial.println("Kalman-Tuning (Rueckwaerts) abgeschlossen.");
+                Serial.print("Beste Parameter: e_mea = ");
                 Serial.print(best_kalman_e_mea_reverse);
                 Serial.print(", q = ");
                 Serial.println(best_kalman_q_reverse);
                 motor.setKalmanGains(best_kalman_e_mea_reverse, best_kalman_q_reverse);
+
+                // Nächste Phase: PI-Tuning (rückwärts).
                 currentState = TUNING_PI_REVERSE;
                 stateStartTime = millis();
                 idx1 = 0;
                 idx2 = 0;
                 bestScore = -1.0;
-                Serial.println("\nTuning PI Controller (Reverse)...");
+                Serial.println("\nBeginne Tuning fuer PI-Regler (Rueckwaerts)...");
                 motor.setGains(pi_kp_values[idx1], pi_ki_values[idx2]);
                 startMovementProfile();
             } else {
-                Serial.print("Testing e_mea = ");
+                // Nächsten Kalman-Testlauf (rückwärts) starten.
+                Serial.print("Teste e_mea = ");
                 Serial.print(kalman_e_mea_values[idx1]);
                 Serial.print(", q = ");
                 Serial.println(kalman_q_values[idx2]);
@@ -266,29 +321,37 @@ void loop() {
             break;
 
         case TUNING_PI_REVERSE:
+            // Score des PI-Regler-Tests (rückwärts) auswerten.
             if (bestScore < 0 || stabilityScore < bestScore) {
                 bestScore = stabilityScore;
                 best_pi_kp_reverse = pi_kp_values[idx1];
                 best_pi_ki_reverse = pi_ki_values[idx2];
             }
-            Serial.print("  Test complete. Score: ");
+            Serial.print("  Test abgeschlossen. Score: ");
             Serial.println(stabilityScore);
+
+            // Nächste PI-Parameter-Kombination.
             idx2++;
             if (idx2 >= num_pi_ki_values) {
                 idx2 = 0;
                 idx1++;
             }
+
             if (idx1 >= num_pi_kp_values) {
-                Serial.println("PI tuning (Reverse) complete.");
-                Serial.print("Best Params: Kp = ");
+                // PI-Tuning (rückwärts) abgeschlossen.
+                Serial.println("PI-Tuning (Rueckwaerts) abgeschlossen.");
+                Serial.print("Beste Parameter: Kp = ");
                 Serial.print(best_pi_kp_reverse);
                 Serial.print(", Ki = ");
                 Serial.println(best_pi_ki_reverse);
                 motor.setGains(best_pi_kp_reverse, best_pi_ki_reverse);
+
+                // Prozess ist fertig.
                 currentState = DONE;
                 stateStartTime = millis();
             } else {
-                Serial.print("Testing Kp = ");
+                // Nächsten PI-Testlauf (rückwärts) starten.
+                Serial.print("Teste Kp = ");
                 Serial.print(pi_kp_values[idx1]);
                 Serial.print(", Ki = ");
                 Serial.println(pi_ki_values[idx2]);
@@ -298,39 +361,40 @@ void loop() {
             break;
 
         case TUNING_STALL_REVERSE:
-            // Stall tuning is not implemented in this version
+            // Blockiererkennung wird in dieser Version nicht automatisch justiert.
             currentState = DONE;
             break;
 
         case DONE:
+            // Endergebnis ausgeben.
             Serial.println("\n===================================");
-            Serial.println("Tuning Complete!");
-            Serial.println("Recommended Settings:");
+            Serial.println("Tuning Abgeschlossen!");
+            Serial.println("Empfohlene Einstellungen:");
             Serial.println("===================================");
 
-            Serial.println("\n--- FORWARD Motion ---");
-            Serial.print("Kalman Filter: e_mea = ");
+            Serial.println("\n--- VORWAERTSLAUF ---");
+            Serial.print("Kalman-Filter: e_mea = ");
             Serial.print(best_kalman_e_mea_forward);
             Serial.print(", q = ");
             Serial.println(best_kalman_q_forward);
-            Serial.print("PI Controller: Kp = ");
+            Serial.print("PI-Regler: Kp = ");
             Serial.print(best_pi_kp_forward);
             Serial.print(", Ki = ");
             Serial.println(best_pi_ki_forward);
 
-            Serial.println("\n--- REVERSE Motion ---");
-            Serial.print("Kalman Filter: e_mea = ");
+            Serial.println("\n--- RUECKWAERTSLAUF ---");
+            Serial.print("Kalman-Filter: e_mea = ");
             Serial.print(best_kalman_e_mea_reverse);
             Serial.print(", q = ");
             Serial.println(best_kalman_q_reverse);
-            Serial.print("PI Controller: Kp = ");
+            Serial.print("PI-Regler: Kp = ");
             Serial.print(best_pi_kp_reverse);
             Serial.print(", Ki = ");
             Serial.println(best_pi_ki_reverse);
 
-            Serial.println("\nTo use these settings, update them in your main sketch.");
+            Serial.println("\nUm diese Einstellungen zu verwenden, uebertragen Sie sie in Ihren Haupt-Sketch.");
 
-            // Halt execution.
+            // Programm anhalten.
             while (true) {
                 delay(100);
             }
@@ -339,82 +403,83 @@ void loop() {
 }
 
 /**
- * @brief Starts the movement profile for a tuning run.
+ * @brief Startet das standardisierte Bewegungsprofil für einen einzelnen Testlauf.
  */
 void startMovementProfile() {
-    stabilityScore = 0;
+    stabilityScore = 0; // Score für diesen Lauf zurücksetzen.
     currentProfileState = PROFILE_ACCEL_LOW;
     profileStateStartTime = millis();
-    motor.setTargetSpeed(80, 2000); // Ramp to 30% speed
+    motor.setTargetSpeed(80, 2000); // Sanfter Anstieg auf ca. 30% Geschwindigkeit.
     profileRunning = true;
-    Serial.print("  Running profile... ");
+    Serial.print("  Fahre Bewegungsprofil... ");
 }
 
 /**
- * @brief Manages the execution of the movement profile and calculates the stability score.
- * This function must be called repeatedly until the profile is complete.
- * @return Returns true if the profile is still running, false when it's complete.
+ * @brief Steuert den Ablauf des Bewegungsprofils und berechnet den Score.
+ * @details Diese Funktion wird wiederholt von `loop()` aufgerufen, solange `profileRunning` true ist.
+ * @return true, wenn das Profil noch läuft, false, wenn es abgeschlossen ist.
  */
 bool updateMovementProfile() {
     if (currentProfileState == PROFILE_IDLE || !profileRunning) {
         return false;
     }
 
-    // Call the main motor update function
     motor.update();
 
-    // Calculate the absolute error between target and current speed for the score
+    // Der Stabilitäts-Score ist die Summe der absoluten Abweichungen zwischen Soll- und Ist-Geschwindigkeit.
+    // Ein kleinerer Wert bedeutet, dass der Motor dem Geschwindigkeitsprofil genauer folgt.
     stabilityScore += abs(motor.getTargetSpeed() - motor.getCurrentSpeed());
 
     unsigned long timeInProfileState = millis() - profileStateStartTime;
 
     switch (currentProfileState) {
-        case PROFILE_ACCEL_LOW:
+        case PROFILE_ACCEL_LOW: // Beschleunigen auf niedrige Geschwindigkeit.
             if (motor.getCurrentSpeed() >= 75) {
                 currentProfileState = PROFILE_HOLD_LOW;
                 profileStateStartTime = millis();
             }
             break;
 
-        case PROFILE_HOLD_LOW:
+        case PROFILE_HOLD_LOW: // Niedrige Geschwindigkeit für 2 Sekunden halten.
             if (timeInProfileState >= 2000) {
                 currentProfileState = PROFILE_ACCEL_HIGH;
                 profileStateStartTime = millis();
-                motor.setTargetSpeed(200, 2000); // Ramp to 80% speed
+                motor.setTargetSpeed(200, 2000); // Auf ca. 80% Geschwindigkeit beschleunigen.
             }
             break;
 
-        case PROFILE_ACCEL_HIGH:
+        case PROFILE_ACCEL_HIGH: // Beschleunigen auf hohe Geschwindigkeit.
             if (motor.getCurrentSpeed() >= 195) {
                 currentProfileState = PROFILE_HOLD_HIGH;
                 profileStateStartTime = millis();
             }
             break;
 
-        case PROFILE_HOLD_HIGH:
+        case PROFILE_HOLD_HIGH: // Hohe Geschwindigkeit für 3 Sekunden halten.
             if (timeInProfileState >= 3000) {
                 currentProfileState = PROFILE_DECEL;
                 profileStateStartTime = millis();
-                motor.setTargetSpeed(0, 2000); // Ramp to stop
+                motor.setTargetSpeed(0, 2000); // Sanft zum Stillstand abbremsen.
             }
             break;
 
-        case PROFILE_DECEL:
-            if (motor.getCurrentSpeed() == 0 && timeInProfileState > 2100) { // Wait until ramp is done
+        case PROFILE_DECEL: // Abbremsen zum Stillstand.
+            // Warten, bis die Rampe beendet ist und der Motor steht.
+            if (motor.getCurrentSpeed() == 0 && timeInProfileState > 2100) {
                 currentProfileState = PROFILE_COMPLETE;
                 profileStateStartTime = millis();
             }
             break;
 
-        case PROFILE_COMPLETE:
+        case PROFILE_COMPLETE: // Profil ist fertig.
             profileRunning = false;
-            Serial.println("done.");
-            return false; // Profile finished
+            Serial.println("fertig.");
+            return false;
 
         case PROFILE_IDLE:
-             // Should not happen while profileRunning is true
+             // Sollte nicht eintreten, während das Profil läuft.
             break;
     }
 
-    return true; // Profile still running
+    return true; // Profil läuft noch.
 }
