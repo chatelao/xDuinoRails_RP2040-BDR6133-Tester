@@ -3,23 +3,13 @@
 
 #if ARDUINO
 #include <Arduino.h>
+#include <SimpleKalmanFilter.h>
+#include "motor_control_hal.h"
 #else
 #include <cstdint>
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include <SimpleKalmanFilter.h>
-#ifdef __cplusplus
-}
-#endif
-
 #include "PIController.h"
-
-#ifdef USE_RP2040_LOWLEVEL
-#include "motor_control_hal.h"
-#endif
 
 class XDuinoRails_MotorDriver {
 public:
@@ -35,7 +25,7 @@ public:
     // Sets the target speed with a specified ramp duration
     void setTargetSpeed(int speed, unsigned long duration);
 
-    // Puts the motor into a coasting (high-impedance) state
+    // Puts the motor into a coasting (high-impedimpedance) state
     void coast();
 
     // Changes the motor's direction of rotation
@@ -48,6 +38,7 @@ public:
     int getCurrentSpeed();
 
 private:
+#if ARDUINO
     static XDuinoRails_MotorDriver* instance; // Static instance pointer
 
     // Pin numbers
@@ -112,6 +103,7 @@ private:
 #else
     static void on_bemf_update(int measured_bemf);
 #endif
+#endif // ARDUINO
 };
 
 #endif // XDUINORAILS_MOTORDRIVER_H

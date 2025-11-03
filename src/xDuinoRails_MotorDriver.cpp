@@ -1,24 +1,5 @@
+#if ARDUINO
 #include "xDuinoRails_MotorDriver.h"
-
-#if !ARDUINO
-// Mock Arduino functions for native testing
-#include <chrono>
-#include <cstdint>
-#include <iostream>
-
-void pinMode(uint8_t, uint8_t) {}
-void digitalWrite(uint8_t, uint8_t) {}
-int analogRead(uint8_t) { return 512; }
-unsigned long millis() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-void noInterrupts() {}
-void interrupts() {}
-void delayMicroseconds(unsigned int) {}
-long map(long x, long in_min, long in_max, long out_min, long out_max) {
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
-#endif
 
 // Define the static instance pointer
 XDuinoRails_MotorDriver* XDuinoRails_MotorDriver::instance = nullptr;
@@ -233,3 +214,4 @@ bool XDuinoRails_MotorDriver::pwm_on_callback(struct repeating_timer *t) {
     return true;
 }
 #endif
+#endif // ARDUINO
