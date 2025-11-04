@@ -2,7 +2,7 @@
 #include <fstream>
 #include <vector>
 #include <cassert>
-#include "PIController.h"
+#include "pi_controller.h"
 
 // Simple motor model
 class Motor {
