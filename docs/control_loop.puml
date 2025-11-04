@@ -11,6 +11,8 @@ frame "Firmware" {
     [Target Speed] as setpoint
     [PI Controller] as pi
     [PWM Generation] as pwm
+    [Stall Detection] as stall
+    [Rangiermodus] as rangier
 }
 
 frame "Hardware" {
@@ -20,14 +22,27 @@ frame "Hardware" {
 }
 
 frame "Signal Processing" {
-    [IIR Filter] as filter
+    [EMA Filter] as ema
+    [Kalman Filter] as kalman
+    [Pulse Counter] as counter
 }
 
 setpoint -> pi : speed_setpoint_pps
+setpoint -> rangier
+setpoint -> stall
+
+rangier -> pi : adjusts gains
+
 pi -> pwm : pwm_duty_cycle
 pwm -> driver
 driver --> motor
 motor --> adc : back_EMF_voltage
-adc -> filter : raw_bemf_adc
-filter --> pi : filtered_speed_pps
+
+adc -> ema : raw_bemf_adc
+ema -> kalman : smoothed_bemf
+kalman -> counter : kalman_filtered_bemf
+counter --> pi : measured_speed_pps
+counter --> stall : measured_speed_pps
+
+stall -> pi : sets target_speed to 0
 @enduml
