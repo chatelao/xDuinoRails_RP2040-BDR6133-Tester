@@ -13,6 +13,7 @@ AGENTS.md
 # Code
 Follow the most used file & code naming conventions in the project:
 - If not yet provided use “snake case”
+- Keep ".md" documentation files uppercase snake
 - Comment lines if magic numbers or complex operations are used
 
 # Code
