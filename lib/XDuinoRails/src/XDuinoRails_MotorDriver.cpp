@@ -28,6 +28,9 @@ public:
     void setPIgains(float kp, float ki);
     void setFilterParameters(float ema_alpha, float mea_e, float est_e, float q);
 
+    void enableEmaFilter(bool enable);
+    void enableKalmanFilter(bool enable);
+
     int getCurrentPWM() const;
     void setCurrentPWM(int pwm);
 
@@ -56,6 +59,7 @@ private:
 
     // BEMF Pulse Counting
     float EMA_ALPHA = 0.21;
+    bool _ema_filter_enabled = true;
     float BEMF_MEA_E = 2.0;
     float BEMF_EST_E = 2.0;
     float BEMF_Q = 0.01;
@@ -64,6 +68,7 @@ private:
     float _measured_speed_pps = 0.0;
     bool _last_bemf_state = false;
     SimpleKalmanFilter _bemfKalmanFilter;
+    bool _kalman_filter_enabled = true;
 
     // PWM Parameters
 #ifndef USE_RP2040_LOWLEVEL
@@ -198,6 +203,14 @@ void XDuinoRails_MotorDriver_Impl::setFilterParameters(float ema_alpha, float me
     _bemfKalmanFilter = SimpleKalmanFilter(BEMF_MEA_E, BEMF_EST_E, BEMF_Q);
 }
 
+void XDuinoRails_MotorDriver_Impl::enableEmaFilter(bool enable) {
+    _ema_filter_enabled = enable;
+}
+
+void XDuinoRails_MotorDriver_Impl::enableKalmanFilter(bool enable) {
+    _kalman_filter_enabled = enable;
+}
+
 int XDuinoRails_MotorDriver_Impl::getCurrentPWM() const {
     return _current_pwm;
 }
@@ -223,11 +236,13 @@ void XDuinoRails_MotorDriver_Impl::on_bemf_update(int measured_bemf) {
     if (!filter_initialized) {
         smoothed_bemf = measured_bemf;
         filter_initialized = true;
-    } else {
+    } else if (_ema_filter_enabled) {
         smoothed_bemf = (EMA_ALPHA * measured_bemf) + ((1.0 - EMA_ALPHA) * smoothed_bemf);
+    } else {
+        smoothed_bemf = measured_bemf;
     }
 
-    float kalman_filtered_bemf = _bemfKalmanFilter.updateEstimate(smoothed_bemf);
+    float kalman_filtered_bemf = _kalman_filter_enabled ? _bemfKalmanFilter.updateEstimate(smoothed_bemf) : smoothed_bemf;
 
     bool current_bemf_state = (kalman_filtered_bemf > bemf_threshold);
     if (current_bemf_state && !_last_bemf_state) {
@@ -288,11 +303,13 @@ int64_t XDuinoRails_MotorDriver_Impl::pwm_off_callback(alarm_id_t alarm_id, void
         if (!filter_initialized) {
             smoothed_bemf = measured_bemf;
             filter_initialized = true;
-        } else {
+        } else if (instance->_ema_filter_enabled) {
             smoothed_bemf = (instance->EMA_ALPHA * measured_bemf) + ((1.0 - instance->EMA_ALPHA) * smoothed_bemf);
+        } else {
+            smoothed_bemf = measured_bemf;
         }
 
-        float kalman_filtered_bemf = instance->_bemfKalmanFilter.updateEstimate(smoothed_bemf);
+        float kalman_filtered_bemf = instance->_kalman_filter_enabled ? instance->_bemfKalmanFilter.updateEstimate(smoothed_bemf) : smoothed_bemf;
 
         bool current_bemf_state = (kalman_filtered_bemf > instance->bemf_threshold);
         if (current_bemf_state && !instance->_last_bemf_state) {
@@ -371,6 +388,14 @@ void XDuinoRails_MotorDriver::setPIgains(float kp, float ki) {
 
 void XDuinoRails_MotorDriver::setFilterParameters(float ema_alpha, float mea_e, float est_e, float q) {
     pImpl->setFilterParameters(ema_alpha, mea_e, est_e, q);
+}
+
+void XDuinoRails_MotorDriver::enableEmaFilter(bool enable) {
+    pImpl->enableEmaFilter(enable);
+}
+
+void XDuinoRails_MotorDriver::enableKalmanFilter(bool enable) {
+    pImpl->enableKalmanFilter(enable);
 }
 
 int XDuinoRails_MotorDriver::getCurrentPWM() const {

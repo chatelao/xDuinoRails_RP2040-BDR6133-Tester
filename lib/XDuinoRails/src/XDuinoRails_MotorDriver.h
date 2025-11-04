@@ -31,6 +31,9 @@ public:
     void setPIgains(float kp, float ki);
     void setFilterParameters(float ema_alpha, float mea_e, float est_e, float q);
 
+    void enableEmaFilter(bool enable);
+    void enableKalmanFilter(bool enable);
+
     int getCurrentPWM() const;
     void setCurrentPWM(int pwm);
 
