@@ -1,0 +1,19 @@
+{
+  "name": "XDuinoRails",
+  "version": "0.0.1",
+  "description": "A library for controlling DC motors with BEMF feedback.",
+  "keywords": "motor, bemf, rp2040",
+  "authors": [
+    {
+      "name": "Jules",
+      "email": "jules@example.com"
+    }
+  ],
+  "license": "AGPL-3.0-or-later",
+  "headers": [
+    "XDuinoRails.h",
+    "XDuinoRails_MotorDriver.h",
+    "motor_control_hal.h",
+    "pi_controller.h"
+  ]
+}
