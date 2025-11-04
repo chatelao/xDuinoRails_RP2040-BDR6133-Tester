@@ -28,6 +28,9 @@ public:
     void enablePIController(bool enable);
     void resetPIController();
 
+    void setPIgains(float kp, float ki);
+    void setFilterParameters(float ema_alpha, float mea_e, float est_e, float q);
+
     int getCurrentPWM() const;
     void setCurrentPWM(int pwm);
 
