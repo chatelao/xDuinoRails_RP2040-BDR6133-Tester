@@ -25,6 +25,9 @@ public:
     void enablePIController(bool enable);
     void resetPIController();
 
+    void setPIgains(float kp, float ki);
+    void setFilterParameters(float ema_alpha, float mea_e, float est_e, float q);
+
     int getCurrentPWM() const;
     void setCurrentPWM(int pwm);
 
@@ -44,18 +47,18 @@ private:
 
     // Proportional-Integral Controller
     volatile bool _pi_controller_enabled = true;
-    const float Kp_normal = 0.1;
-    const float Ki_normal = 0.1;
-    const float Kp_rangier = 0.15;
-    const float Ki_rangier = 0.05;
+    float Kp_normal = 0.1;
+    float Ki_normal = 0.1;
+    float Kp_rangier = 0.15;
+    float Ki_rangier = 0.05;
     PIController _pi_controller;
     bool _was_in_rangiermodus = false;
 
     // BEMF Pulse Counting
-    const float EMA_ALPHA = 0.21;
-    const float BEMF_MEA_E = 2.0;
-    const float BEMF_EST_E = 2.0;
-    const float BEMF_Q = 0.01;
+    float EMA_ALPHA = 0.21;
+    float BEMF_MEA_E = 2.0;
+    float BEMF_EST_E = 2.0;
+    float BEMF_Q = 0.01;
     const int bemf_threshold = 500;
     volatile int _commutation_pulse_count = 0;
     float _measured_speed_pps = 0.0;
@@ -174,6 +177,25 @@ void XDuinoRails_MotorDriver_Impl::enablePIController(bool enable) {
 
 void XDuinoRails_MotorDriver_Impl::resetPIController() {
     _pi_controller.reset();
+}
+
+void XDuinoRails_MotorDriver_Impl::setPIgains(float kp, float ki) {
+    // This function could be smarter, e.g. distinguishing between normal and rangier mode
+    // For now, it sets both to the same value.
+    Kp_normal = kp;
+    Ki_normal = ki;
+    Kp_rangier = kp;
+    Ki_rangier = ki;
+    _pi_controller.setGains(kp, ki);
+}
+
+void XDuinoRails_MotorDriver_Impl::setFilterParameters(float ema_alpha, float mea_e, float est_e, float q) {
+    EMA_ALPHA = ema_alpha;
+    BEMF_MEA_E = mea_e;
+    BEMF_EST_E = est_e;
+    BEMF_Q = q;
+    // Re-initialize the Kalman filter with new parameters
+    _bemfKalmanFilter = SimpleKalmanFilter(BEMF_MEA_E, BEMF_EST_E, BEMF_Q);
 }
 
 int XDuinoRails_MotorDriver_Impl::getCurrentPWM() const {
@@ -341,6 +363,14 @@ void XDuinoRails_MotorDriver::enablePIController(bool enable) {
 
 void XDuinoRails_MotorDriver::resetPIController() {
     pImpl->resetPIController();
+}
+
+void XDuinoRails_MotorDriver::setPIgains(float kp, float ki) {
+    pImpl->setPIgains(kp, ki);
+}
+
+void XDuinoRails_MotorDriver::setFilterParameters(float ema_alpha, float mea_e, float est_e, float q) {
+    pImpl->setFilterParameters(ema_alpha, mea_e, est_e, q);
 }
 
 int XDuinoRails_MotorDriver::getCurrentPWM() const {
