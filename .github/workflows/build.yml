@@ -1,9 +1,6 @@
 name: Build and Release
 
 on:
-  push:
-    branches:
-      - '**'
   release:
     types: [published]
 
@@ -28,8 +25,11 @@ jobs:
           pip install --upgrade platformio
           pip install -r scripts/requirements.txt
 
-      - name: Build project
-        run: pio run
+      - name: Build Firmware
+        run: pio run --environment seeed_xiao_rp2040
+
+      - name: Rename Firmware
+        run: mv .pio/build/seeed_xiao_rp2040/firmware.uf2 xDuinoRails_Firmware.uf2
 
       - name: Run simulation test
         run: pio test --environment native
@@ -38,9 +38,8 @@ jobs:
         run: python3 scripts/plot_simulation.py
 
       - name: Upload Release Assets
-        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            .pio/build/seeed_xiao_rp2040/firmware.uf2
+            xDuinoRails_Firmware.uf2
             simulation_graph.png
