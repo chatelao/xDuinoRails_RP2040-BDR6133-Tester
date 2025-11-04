@@ -15,7 +15,7 @@ frame "Firmware" {
 
 frame "Hardware" {
     [Motor Driver] as driver
-    [DC Motor] as motor
+    [DC Motor] as motor#Salmon
     [Analog-to-Digital\nConverter] as adc
 }
 
@@ -27,8 +27,7 @@ setpoint -> pi : speed_setpoint_pps
 pi -> pwm : pwm_duty_cycle
 pwm -> driver
 driver --> motor
-motor -> adc : back_EMF_voltage
+motor --> adc : back_EMF_voltage
 adc -> filter : raw_bemf_adc
 filter --> pi : filtered_speed_pps
-
 @enduml
