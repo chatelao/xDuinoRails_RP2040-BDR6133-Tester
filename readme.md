@@ -1,72 +1,40 @@
-# BDR-6133 Märklin Motor Driver
+# XDuinoRails Motor Driver
 
-This project describes the wiring and control of a digital Märklin motor using a BDR6-133 motor driver and a XIAO SEED RP2040 microcontroller.
+A powerful, closed-loop motor driver library for Arduino and PlatformIO, designed for controlling DC motors with high precision. This library is ideal for projects like model trains, robotics, or any application that requires smooth and accurate speed control.
 
-**For a complete and detailed technical description, a "Getting Started" guide, and a troubleshooting guide, please read the [EXTENDED DOCUMENTATION](DOCUMENTATION.md).**
+At its core, this library uses back-EMF (BEMF) sensing to measure the motor's actual speed, and then uses a Proportional-Integral (PI) controller to finely adjust the motor's power via PWM. This ensures the motor maintains a constant speed under varying loads.
 
-## Control System
+## Features
 
-This project uses a **closed-loop control system** to regulate the motor's speed. The system is based on measuring the motor's back-EMF (BEMF) to determine its actual speed and then adjusting the power delivered to the motor via Pulse Width Modulation (PWM) to match a target speed.
+*   **Closed-Loop Speed Control:** Uses a PI controller for precise and stable motor speed.
+*   **Back-EMF Sensing:** Accurately measures motor speed without the need for an external encoder.
+*   **Advanced Signal Filtering:** A two-stage filter (EMA and Kalman) provides a clean and stable speed reading, even with noisy motors.
+*   **Easy to Use:** A simple and intuitive API makes it easy to get your motor running in minutes.
+*   **Arduino and PlatformIO Compatible:** Works seamlessly with both development environments.
+*   **Hardware Accelerated:** Includes an optional, high-performance mode for the RP2040 that uses hardware timers for even more precise control.
 
-A non-blocking, software-based PWM signal with a frequency of 1kHz is used to drive the motor. The control loop is integrated directly into this software PWM loop.
+## Installation
 
-The control loop operates as follows:
+### Arduino IDE
 
-1.  **Speed Measurement (BEMF Sensing):**
-    *   The BEMF measurement is strategically timed to occur during the "off" phase of each PWM cycle, ensuring that the measurement is not affected by the driving voltage.
-    *   To measure the BEMF, the motor is briefly disconnected from the driving voltage. This is achieved by setting the motor driver's input pins (`D7`, `D8`) to `INPUT` mode, which puts the H-Bridge into a high-impedance (coasting) state.
-    *   After a 100-microsecond delay to allow the motor's electrical state to stabilize, the BEMF is read as a differential voltage between the two motor terminals (`OutA` and `OutB`).
+1.  Download this repository as a `.zip` file by clicking the "Code" button and selecting "Download ZIP".
+2.  In the Arduino IDE, go to `Sketch` -> `Include Library` -> `Add .ZIP Library...`
+3.  Select the downloaded `.zip` file.
+4.  The library will now be available in your `Sketch` -> `Include Library` menu.
 
-2.  **BEMF Signal Filtering:**
-    *   The raw BEMF signal is noisy, especially with a 3-pole commutator motor. To get a stable speed reading, a two-stage filtering process is used:
-        1.  **Exponential Moving Average (EMA) Filter:** A simple EMA filter is applied first to perform an initial smoothing of the signal and reduce high-frequency noise spikes.
-        2.  **Kalman Filter:** The pre-filtered signal is then passed to a Kalman filter. This advanced filter estimates the "true" BEMF value based on a system model, effectively filtering out noise while introducing minimal signal delay. This provides a clean signal for reliable speed calculation.
-    *   The filtered BEMF signal is used to count commutation pulses, which are then converted into a speed value in pulses per second (PPS).
+### PlatformIO
 
-3.  **Proportional-Integral (PI) Controller:**
-    *   A Proportional-Integral (PI) controller is used to adjust the motor's speed with high accuracy and stability.
-    *   It calculates the `error` by subtracting the measured speed from the `target_speed`.
-    *   The controller has two components:
-        *   The **Proportional (P) term** provides an immediate correction based on the current error (`Kp * error`).
-        *   The **Integral (I) term** accumulates the error over time. This helps to eliminate steady-state error and ensures the motor reaches the target speed, even under sustained load.
-    *   The final PWM duty cycle is a combination of these two terms, ensuring a rapid response to changes and long-term accuracy.
-    *   The controller also implements an anti-windup mechanism to prevent the integral term from becoming excessively large when the PWM output is saturated.
+1.  Add this repository to the `lib_deps` section of your `platformio.ini` file:
+    ```ini
+    lib_deps =
+        https://github.com/chatelao/xDuinoRails_RP2040-BDR6133-Tester.git
+        denyssene/SimpleKalmanFilter
+    ```
+2.  PlatformIO will automatically download and install the library the next time you build your project.
 
-### Control Loop Diagram
+## Wiring Diagram
 
-![Control Loop Diagram](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/chatelao/xDuinoRails_RP2040-BDR6133-Tester/main/docs/control_loop.puml) 
-
-### Concept Idea: Soft-Start Routine
-
-To avoid high inrush currents when starting the motor, a soft-start routine can be implemented. This routine would gradually increase the PWM duty cycle instead of immediately jumping to the value calculated by the P-controller.
-
-**How it works:**
-
-1.  **Initialization:** When the motor is started, the PWM duty cycle begins at a very low value (e.g., 10 out of 255).
-2.  **Ramp:** The duty cycle is increased by a small amount in each control cycle until it reaches the value required by the P-controller.
-3.  **Handover to Controller:** Once the ramp is complete, the P-controller takes full control of the PWM duty cycle.
-
-This method ensures that the motor starts smoothly, which reduces mechanical stress and avoids electrical peaks.
-
-## Wiring
-
-The components are connected as follows:
-
-*   **BDR6-133 Motor Driver:**
-    *   `OutA` and `OutB` are connected to the two terminals of the Märklin motor.
-    *   `InA` and `InB` are the control inputs. `InA` controls the forward direction, and `InB` controls the reverse direction.
-
-*   **Voltage Dividers (for Back EMF):**
-    *   `OutA` is connected to ground via a voltage divider (6.8kΩ / 1kΩ).
-    *   `OutB` is connected to ground via a voltage divider (6.8kΩ / 1kΩ).
-
-*   **XIAO SEED RP2040 Connections:**
-    *   `D7` -> `BDR6-133 InA` - Controls motor speed in the forward direction.
-    *   `D8` -> `BDR6-133 InB` - Controls motor speed in the reverse direction.
-    *   `A3` -> Middle of the `OutA` voltage divider - Measures back EMF from motor terminal A.
-    *   `A2` -> Middle of the `OutB` voltage divider - Measures back EMF from motor terminal B.
-
-### Connection Diagram (Physical Layout)
+This diagram shows a typical wiring setup using a XIAO SEED RP2040 and a BDR-6133 motor driver.
 
 ```
                      +----------------------+      +----------------------+      +---------------+
@@ -83,11 +51,102 @@ The components are connected as follows:
                      +----------------------+      +----------------------+      +---------------+
 ```
 
-## Status Indicator
+## Getting Started
 
-The built-in LED on the XIAO SEED RP2040 provides visual feedback on the motor's operational state:
+This simple example demonstrates how to get your motor up and running.
 
-*   **Solid ON:** The motor is ramping up to its target speed.
-*   **Slow Blink (500ms interval):** The motor is ramping down.
-*   **Fast Blink (100ms interval):** The motor is in a brief delay period while changing direction (from forward to reverse or vice-versa).
-*   **Solid OFF:** The motor is stopped.
+```cpp
+/**
+ * @file getting_started.ino
+ * @brief A simple example to demonstrate the basic functionality of the XDuinoRails_MotorDriver library.
+ */
+
+#include <Arduino.h>
+#include <XDuinoRails_MotorDriver.h>
+
+// 1. Define Pin Connections
+// These pins are for the XIAO SEED RP2040, but you can change them for your board.
+const int MOTOR_PWM_A_PIN = 7;  // Connect to BDR-6133 InA
+const int MOTOR_PWM_B_PIN = 8;  // Connect to BDR-6133 InB
+const int MOTOR_BEMF_A_PIN = A3; // Connect to the middle of the OutA voltage divider
+const int MOTOR_BEMF_B_PIN = A2; // Connect to the middle of the OutB voltage divider
+
+// 2. Create an instance of the motor driver
+XDuinoRails_MotorDriver motor(MOTOR_PWM_A_PIN, MOTOR_PWM_B_PIN, MOTOR_BEMF_A_PIN, MOTOR_BEMF_B_PIN);
+
+void setup() {
+  Serial.begin(115200);
+
+  // 3. Initialize the motor driver
+  motor.begin();
+
+  // 4. Set a target speed
+  // The speed is in "pulses per second" (PPS). The valid range depends on your motor.
+  // A value between 50 and 200 is a good starting point.
+  motor.setTargetSpeed(100);
+}
+
+void loop() {
+  // It is crucial to call motor.update() in every loop iteration.
+  // This function handles the BEMF measurement and PI controller logic.
+  motor.update();
+
+  // You can also print the measured speed for debugging
+  Serial.print("Target Speed: ");
+  Serial.print(motor.getTargetSpeed());
+  Serial.print(" PPS, Measured Speed: ");
+  Serial.print(motor.getMeasuredSpeedPPS());
+  Serial.println(" PPS");
+
+  delay(100); // Delay for readability
+}
+```
+
+You can find this and other examples in the `examples` folder of this repository.
+
+## API Reference
+
+### `XDuinoRails_MotorDriver(int pwmAPin, int pwmBPin, int bemfAPin, int bemfBPin)`
+
+The constructor creates a new motor driver instance. You must provide the four pins used to control the motor.
+
+### `void begin()`
+
+Initializes the motor driver and the associated hardware. Call this once in your `setup()` function.
+
+### `void update()`
+
+This is the heart of the library. It performs the BEMF measurement, runs the PI controller, and updates the motor's PWM signal. **You must call this function in every iteration of your `loop()` for the library to work correctly.**
+
+### `void setTargetSpeed(int speed)`
+
+Sets the desired motor speed in "pulses per second" (PPS). The library will automatically adjust the motor's power to reach and maintain this speed. Set the speed to `0` to stop the motor.
+
+### `int getTargetSpeed() const`
+
+Returns the current target speed.
+
+### `float getMeasuredSpeedPPS() const`
+
+Returns the most recent speed measurement from the BEMF sensor, after filtering.
+
+### `void setDirection(bool forward)`
+
+Sets the motor's direction. `true` for forward, `false` for reverse.
+
+### `bool getDirection() const`
+
+Returns the current direction of the motor.
+
+## How It Works (Advanced)
+
+For those interested in the technical details, the library follows this control loop:
+
+1.  **BEMF Measurement:** During the "off" phase of each PWM cycle, the motor is briefly disconnected from power, and the BEMF voltage is read from the motor terminals.
+2.  **Signal Filtering:** The raw BEMF signal is passed through an Exponential Moving Average (EMA) filter and then a Kalman filter to produce a clean, stable speed reading.
+3.  **PI Control:** A Proportional-Integral (PI) controller calculates the error between the target speed and the measured speed, and then computes a new PWM value to correct for this error.
+4.  **PWM Update:** The PWM signal sent to the motor driver is updated with the new value from the PI controller.
+
+This entire process happens automatically within the `update()` function.
+
+![Control Loop Diagram](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/chatelao/xDuinoRails_RP2040-BDR6133-Tester/main/docs/control_loop.puml)
