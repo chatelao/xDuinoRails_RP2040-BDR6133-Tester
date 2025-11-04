@@ -15,7 +15,7 @@
 #endif
 #include <Adafruit_NeoPixel.h>
 #include <SimpleKalmanFilter.h>
-#include "PIController.h"
+#include "pi_controller.h"
 
 //== Pin Definitions ==
 const int pwmAPin = D7;      ///< Pin for PWM Forward direction (connects to InA).
