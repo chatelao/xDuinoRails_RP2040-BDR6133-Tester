@@ -36,6 +36,10 @@ public:
 
     ControllerAction getControllerAction() const;
 
+    void setAcceleration(float rate);
+    void setDeceleration(float rate);
+    void setStartupKick(int pwm, int duration_ms);
+
 private:
     // Pin Definitions
     int _pwmAPin, _pwmBPin, _bemfAPin, _bemfBPin;
@@ -79,11 +83,23 @@ private:
 
     // Global Motor & PWM State Variables
     volatile int _target_speed = 0;
+    volatile float _current_speed_setpoint = 0.0;
     volatile int _current_pwm = 0;
     volatile bool _motor_forward = true;
 
+    // Acceleration/Deceleration Parameters
+    float _acceleration_rate = 0.0; // in speed units per second
+    float _deceleration_rate = 0.0; // in speed units per second
+
+    // Startup Kick Parameters
+    int _startup_kick_pwm = 0;
+    int _startup_kick_duration_ms = 0;
+    unsigned long _kick_start_ms = 0;
+    bool _is_kick_active = false;
+
     // Internal state
     unsigned long _last_speed_calc_ms = 0;
+    unsigned long _last_update_ms = 0;
     unsigned long _stall_check_start_ms = 0;
 
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
@@ -93,7 +109,7 @@ private:
 #elif ARDUINO
     static XDuinoRails_MotorDriver_Impl* instance;
     static bool pwm_on_callback(struct repeating_timer *t);
-    static int60_t pwm_off_callback(alarm_id_t alarm_id, void *user_data);
+    static int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data);
 #endif
 };
 
@@ -122,6 +138,21 @@ void XDuinoRails_MotorDriver_Impl::begin() {
 void XDuinoRails_MotorDriver_Impl::update() {
 #if ARDUINO
     unsigned long current_millis = millis();
+    float elapsed_update_time_s = (current_millis - _last_update_ms) / 1000.0;
+    _last_update_ms = current_millis;
+
+    // Acceleration/Deceleration Ramp
+    if (_current_speed_setpoint < _target_speed) {
+        _current_speed_setpoint += _acceleration_rate * elapsed_update_time_s;
+        if (_current_speed_setpoint > _target_speed) {
+            _current_speed_setpoint = _target_speed;
+        }
+    } else if (_current_speed_setpoint > _target_speed) {
+        _current_speed_setpoint -= _deceleration_rate * elapsed_update_time_s;
+        if (_current_speed_setpoint < _target_speed) {
+            _current_speed_setpoint = _target_speed;
+        }
+    }
 
     // Speed calculation
     if (current_millis - _last_speed_calc_ms >= 100) {
@@ -131,7 +162,9 @@ void XDuinoRails_MotorDriver_Impl::update() {
         interrupts();
 
         float elapsed_time_s = (current_millis - _last_speed_calc_ms) / 1000.0;
-        _measured_speed_pps = pulses / elapsed_time_s;
+        if (elapsed_time_s > 0) {
+            _measured_speed_pps = pulses / elapsed_time_s;
+        }
         _last_speed_calc_ms = current_millis;
     }
 
@@ -140,7 +173,7 @@ void XDuinoRails_MotorDriver_Impl::update() {
         if (_stall_check_start_ms == 0) {
             _stall_check_start_ms = current_millis;
         } else if (current_millis - _stall_check_start_ms >= stall_timeout_ms) {
-            _target_speed = 0; // Stall detected, stop motor
+            setTargetSpeed(0); // Stall detected, stop motor smoothly
         }
     } else {
         _stall_check_start_ms = 0;
@@ -158,6 +191,17 @@ void XDuinoRails_MotorDriver_Impl::setTargetSpeed(int speed) {
 #else
     _target_speed = speed;
 #endif
+
+    // If acceleration/deceleration is not used, jump directly to the target speed.
+    if (_acceleration_rate <= 0 && _deceleration_rate <= 0) {
+        _current_speed_setpoint = _target_speed;
+    }
+
+    // Trigger startup kick if starting from zero and kick is configured
+    if (_current_speed_setpoint == 0 && _target_speed > 0 && _startup_kick_pwm > 0 && _startup_kick_duration_ms > 0) {
+        _is_kick_active = true;
+        _kick_start_ms = millis();
+    }
 }
 
 int XDuinoRails_MotorDriver_Impl::getTargetSpeed() const {
@@ -223,6 +267,18 @@ ControllerAction XDuinoRails_MotorDriver_Impl::getControllerAction() const {
     return _pi_controller.getAction();
 }
 
+void XDuinoRails_MotorDriver::setAcceleration(float rate) {
+    pImpl->setAcceleration(rate);
+}
+
+void XDuinoRails_MotorDriver::setDeceleration(float rate) {
+    pImpl->setDeceleration(rate);
+}
+
+void XDuinoRails_MotorDriver::setStartupKick(int pwm, int duration_ms) {
+    pImpl->setStartupKick(pwm, duration_ms);
+}
+
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
 void XDuinoRails_MotorDriver_Impl::on_bemf_update_wrapper(int measured_bemf) {
     if (instance) {
@@ -250,8 +306,15 @@ void XDuinoRails_MotorDriver_Impl::on_bemf_update(int measured_bemf) {
     }
     _last_bemf_state = current_bemf_state;
 
-    if (_pi_controller_enabled) {
-        bool is_in_rangiermodus = (_target_speed > 0 && _target_speed <= rangiermodus_speed_threshold);
+    // Handle startup kick
+    if (_is_kick_active) {
+        if (millis() - _kick_start_ms < _startup_kick_duration_ms) {
+            _current_pwm = _startup_kick_pwm;
+        } else {
+            _is_kick_active = false;
+        }
+    } else if (_pi_controller_enabled) {
+        bool is_in_rangiermodus = (_current_speed_setpoint > 0 && _current_speed_setpoint <= rangiermodus_speed_threshold);
         if (is_in_rangiermodus != _was_in_rangiermodus) {
             _pi_controller.reset();
         }
@@ -260,9 +323,23 @@ void XDuinoRails_MotorDriver_Impl::on_bemf_update(int measured_bemf) {
         _pi_controller.setGains(is_in_rangiermodus ? Kp_rangier : Kp_normal, is_in_rangiermodus ? Ki_rangier : Ki_normal);
 
         int measured_speed = map(_measured_speed_pps, 0, 500, 0, 255);
-        _current_pwm = _pi_controller.calculate(_target_speed, measured_speed, _current_pwm);
+        _current_pwm = _pi_controller.calculate(_current_speed_setpoint, measured_speed, _current_pwm);
     }
 }
+
+void XDuinoRails_MotorDriver_Impl::setAcceleration(float rate) {
+    _acceleration_rate = rate;
+}
+
+void XDuinoRails_MotorDriver_Impl::setDeceleration(float rate) {
+    _deceleration_rate = rate;
+}
+
+void XDuinoRails_MotorDriver_Impl::setStartupKick(int pwm, int duration_ms) {
+    _startup_kick_pwm = pwm;
+    _startup_kick_duration_ms = duration_ms;
+}
+
 #elif ARDUINO && !defined(USE_RP2040_LOWLEVEL)
 
 bool XDuinoRails_MotorDriver_Impl::pwm_on_callback(struct repeating_timer *t) {

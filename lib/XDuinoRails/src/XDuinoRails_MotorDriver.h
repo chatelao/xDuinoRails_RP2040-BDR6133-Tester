@@ -31,6 +31,10 @@ public:
     void setPIgains(float kp, float ki);
     void setFilterParameters(float ema_alpha, float mea_e, float est_e, float q);
 
+    void setAcceleration(float rate);
+    void setDeceleration(float rate);
+    void setStartupKick(int pwm, int duration_ms);
+
     void enableEmaFilter(bool enable);
     void enableKalmanFilter(bool enable);
 
