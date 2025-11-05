@@ -28,11 +28,35 @@ jobs:
           pip install --upgrade platformio
           pip install -r scripts/requirements.txt
 
-      - name: Build Firmware
-        run: pio run --environment seeed_xiao_rp2040
-
-      - name: Rename Firmware
-        run: mv .pio/build/seeed_xiao_rp2040/firmware.uf2 demo.uf2
+      - name: Build and Prepare Release Assets
+        run: |
+          # Build default environment
+          pio run -e seeed_xiao_rp2040
+          mv .pio/build/seeed_xiao_rp2040/firmware.uf2 demo.uf2
+          # Build AdvancedMovement
+          pio run -e advanced_movement
+          mv .pio/build/advanced_movement/firmware.uf2 advanced_movement.uf2
+          # Build STM32_GettingStarted
+          pio run -e stm32_getting_started
+          mv .pio/build/stm32_getting_started/firmware.bin stm32_getting_started.bin
+          # Build FindMotorConfig
+          pio run -e find_motor_config
+          mv .pio/build/find_motor_config/firmware.uf2 find_motor_config.uf2
+          # Build GettingStarted (with temporary rename)
+          mv examples/GettingStarted/GettingStarted.ino examples/GettingStarted/main.cpp
+          pio run -e getting_started
+          mv .pio/build/getting_started/firmware.uf2 getting_started.uf2
+          mv examples/GettingStarted/main.cpp examples/GettingStarted/GettingStarted.ino
+          # Build Advanced (with temporary rename)
+          mv examples/Advanced/Advanced.ino examples/Advanced/main.cpp
+          pio run -e advanced
+          mv .pio/build/advanced/firmware.uf2 advanced.uf2
+          mv examples/Advanced/main.cpp examples/Advanced/Advanced.ino
+          # Build RotaryEncoderControl (with temporary rename)
+          mv examples/RotaryEncoderControl/RotaryEncoderControl.ino examples/RotaryEncoderControl/main.cpp
+          pio run -e rotary_encoder_control
+          mv .pio/build/rotary_encoder_control/firmware.uf2 rotary_encoder_control.uf2
+          mv examples/RotaryEncoderControl/main.cpp examples/RotaryEncoderControl/RotaryEncoderControl.ino
 
       - name: Upload Release Assets
         if: github.event_name == 'release'
@@ -40,3 +64,9 @@ jobs:
         with:
           files: |
             demo.uf2
+            advanced_movement.uf2
+            stm32_getting_started.bin
+            find_motor_config.uf2
+            getting_started.uf2
+            advanced.uf2
+            rotary_encoder_control.uf2
