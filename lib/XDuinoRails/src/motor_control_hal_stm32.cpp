@@ -59,12 +59,12 @@ void hal_motor_init(uint8_t pwm_a_pin, uint8_t pwm_b_pin, uint8_t bemf_a_pin, ui
 
     // --- PWM Setup ---
     // Find the timer instance associated with the PWM pin.
-    TIM_TypeDef *pwm_timer_instance = (TIM_TypeDef *)pinmap_peripheral(digitalPinToPinName(g_pwm_a_pin), PinMap_TIM);
+    TIM_TypeDef *pwm_timer_instance = (TIM_TypeDef *)pinmap_peripheral(digitalPinToPinName(g_pwm_a_pin), PinMap_PWM);
     pwm_timer = new HardwareTimer(pwm_timer_instance);
 
     // Get the timer channels for the PWM pins.
-    pwm_channel_a = stm32_timer_get_channel(digitalPinToPinName(g_pwm_a_pin));
-    pwm_channel_b = stm32_timer_get_channel(digitalPinToPinName(g_pwm_b_pin));
+    pwm_channel_a = STM_PIN_CHANNEL(pinmap_function(digitalPinToPinName(g_pwm_a_pin), PinMap_PWM));
+    pwm_channel_b = STM_PIN_CHANNEL(pinmap_function(digitalPinToPinName(g_pwm_b_pin), PinMap_PWM));
 
     // Configure the timer channels for PWM output.
     pwm_timer->setMode(pwm_channel_a, TIMER_OUTPUT_COMPARE_PWM1, g_pwm_a_pin);
@@ -78,7 +78,7 @@ void hal_motor_init(uint8_t pwm_a_pin, uint8_t pwm_b_pin, uint8_t bemf_a_pin, ui
     ADC_ChannelConfTypeDef sConfig = {0};
 
     // Configure the ADC peripheral.
-    hadc.Instance = ADC1;
+    hadc.Instance = (ADC_TypeDef *)pinmap_peripheral(digitalPinToPinName(g_bemf_a_pin), PinMap_ADC);
     hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4; // ADC clock is derived from PCLK2
     hadc.Init.Resolution = ADC_RESOLUTION_12B;          // 12-bit resolution
     hadc.Init.ScanConvMode = ENABLE;                   // Scan multiple channels
@@ -93,13 +93,13 @@ void hal_motor_init(uint8_t pwm_a_pin, uint8_t pwm_b_pin, uint8_t bemf_a_pin, ui
     HAL_ADC_Init(&hadc);
 
     // Configure the first ADC channel (BEMF A).
-    sConfig.Channel = stm32_adc_get_channel(digitalPinToPinName(g_bemf_a_pin));
+    sConfig.Channel = STM_PIN_CHANNEL(pinmap_function(digitalPinToPinName(g_bemf_a_pin), PinMap_ADC));
     sConfig.Rank = 1; // First in the sequence
     sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
     HAL_ADC_ConfigChannel(&hadc, &sConfig);
 
     // Configure the second ADC channel (BEMF B).
-    sConfig.Channel = stm32_adc_get_channel(digitalPinToPinName(g_bemf_b_pin));
+    sConfig.Channel = STM_PIN_CHANNEL(pinmap_function(digitalPinToPinName(g_bemf_b_pin), PinMap_ADC));
     sConfig.Rank = 2; // Second in the sequence
     HAL_ADC_ConfigChannel(&hadc, &sConfig);
 
