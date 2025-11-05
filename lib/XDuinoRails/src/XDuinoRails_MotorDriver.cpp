@@ -5,7 +5,7 @@
 #include <SimpleKalmanFilter.h>
 #include "pi_controller.h"
 
-#ifdef USE_RP2040_LOWLEVEL
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
 #include "motor_control_hal.h"
 #endif
 
@@ -71,7 +71,7 @@ private:
     bool _kalman_filter_enabled = true;
 
     // PWM Parameters
-#ifndef USE_RP2040_LOWLEVEL
+#if ARDUINO && !defined(USE_RP2040_LOWLEVEL) && !defined(ARDUINO_ARCH_STM32)
     const int pwm_frequency = 1000;
     const long pwm_period_us = 1000000 / pwm_frequency;
     struct repeating_timer _pwm_timer;
@@ -86,14 +86,14 @@ private:
     unsigned long _last_speed_calc_ms = 0;
     unsigned long _stall_check_start_ms = 0;
 
-#if ARDUINO && !defined(USE_RP2040_LOWLEVEL)
-    static XDuinoRails_MotorDriver_Impl* instance;
-    static bool pwm_on_callback(struct repeating_timer *t);
-    static int60_t pwm_off_callback(alarm_id_t alarm_id, void *user_data);
-#elif defined(USE_RP2040_LOWLEVEL)
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
     static void on_bemf_update_wrapper(int measured_bemf);
     void on_bemf_update(int measured_bemf);
     static XDuinoRails_MotorDriver_Impl* instance; // Static instance for C-style callback
+#elif ARDUINO
+    static XDuinoRails_MotorDriver_Impl* instance;
+    static bool pwm_on_callback(struct repeating_timer *t);
+    static int60_t pwm_off_callback(alarm_id_t alarm_id, void *user_data);
 #endif
 };
 
@@ -111,10 +111,10 @@ void XDuinoRails_MotorDriver_Impl::begin() {
     pinMode(_bemfAPin, INPUT);
     pinMode(_bemfBPin, INPUT);
 
-#ifndef USE_RP2040_LOWLEVEL
-    add_repeating_timer_us(pwm_period_us, pwm_on_callback, NULL, &_pwm_timer);
-#else
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
     hal_motor_init(_pwmAPin, _pwmBPin, _bemfAPin, _bemfBPin, on_bemf_update_wrapper);
+#else
+    add_repeating_timer_us(pwm_period_us, pwm_on_callback, NULL, &_pwm_timer);
 #endif
 #endif
 }
@@ -146,7 +146,7 @@ void XDuinoRails_MotorDriver_Impl::update() {
         _stall_check_start_ms = 0;
     }
 
-#ifdef USE_RP2040_LOWLEVEL
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
     hal_motor_set_pwm(_current_pwm, _motor_forward);
 #endif
 #endif
@@ -223,7 +223,7 @@ ControllerAction XDuinoRails_MotorDriver_Impl::getControllerAction() const {
     return _pi_controller.getAction();
 }
 
-#ifdef USE_RP2040_LOWLEVEL
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
 void XDuinoRails_MotorDriver_Impl::on_bemf_update_wrapper(int measured_bemf) {
     if (instance) {
         instance->on_bemf_update(measured_bemf);

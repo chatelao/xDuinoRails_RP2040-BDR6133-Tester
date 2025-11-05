@@ -10,7 +10,7 @@
 
 #include "motor_control_hal.h"
 
-#if defined(USE_RP2040_LOWLEVEL)
+#if defined(USE_RP2040_LOWLEVEL) && defined(ARDUINO_ARCH_RP2040)
 
 #include <Arduino.h>
 #include "hardware/pwm.h"
@@ -152,4 +152,4 @@ void hal_motor_set_pwm(int duty_cycle, bool forward) {
     }
 }
 
-#endif // USE_RP2040_LOWLEVEL && ARDUINO_RASPBERRY_PI_PICO
+#endif // USE_RP2040_LOWLEVEL && ARDUINO_ARCH_RP2040
