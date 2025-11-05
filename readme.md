@@ -138,6 +138,21 @@ Sets the motor's direction. `true` for forward, `false` for reverse.
 
 Returns the current direction of the motor.
 
+### `void setAcceleration(float rate)`
+
+Sets the acceleration rate in speed units (PPS) per second. For example, a rate of 50 means the motor's speed will increase by 50 PPS every second until it reaches the target speed. Set to `0` to disable acceleration.
+
+### `void setDeceleration(float rate)`
+
+Sets the deceleration rate in speed units (PPS) per second. For example, a rate of 100 means the motor's speed will decrease by 100 PPS every second until it reaches the target speed. Set to `0` to disable deceleration.
+
+### `void setStartupKick(int pwm, int duration_ms)`
+
+Configures a "startup kick" to help overcome the motor's initial friction. It applies a direct PWM value for a short duration when the motor starts from a standstill.
+
+- `pwm`: The PWM value to apply (0-255).
+- `duration_ms`: The duration of the kick in milliseconds.
+
 ## How It Works (Advanced)
 
 For those interested in the technical details, the library follows this control loop:
