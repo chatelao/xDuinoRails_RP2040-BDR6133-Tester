@@ -5,8 +5,8 @@
   "keywords": "motor, bemf, rp2040",
   "authors": [
     {
-      "name": "Jules",
-      "email": "jules@example.com"
+      "name": "Olivier Chatelain-Gmuer",
+      "email": "olivier.chatelain@gmail.com"
     }
   ],
   "license": "AGPL-3.0-or-later",
