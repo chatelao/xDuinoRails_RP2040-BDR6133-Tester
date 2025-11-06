@@ -7,12 +7,20 @@
 
 #include "pi_controller.h"
 
+#if defined(TESTING)
+unsigned long millis();
+#endif
+
 // Forward declaration of the implementation class
 class XDuinoRails_MotorDriver_Impl;
+class IKalmanFilter;
 
 class XDuinoRails_MotorDriver {
 public:
     XDuinoRails_MotorDriver(int pwmAPin, int pwmBPin, int bemfAPin, int bemfBPin);
+#if defined(TESTING)
+    XDuinoRails_MotorDriver(int pwmAPin, int pwmBPin, int bemfAPin, int bemfBPin, IKalmanFilter* filter);
+#endif
     ~XDuinoRails_MotorDriver();
 
     void begin();
@@ -21,6 +29,7 @@ public:
     void setTargetSpeed(int speed);
     int getTargetSpeed() const;
     float getMeasuredSpeedPPS() const;
+    float getCurrentSpeedSetpoint() const;
 
     void setDirection(bool forward);
     bool getDirection() const;
@@ -30,6 +39,7 @@ public:
 
     void setPIgains(float kp, float ki);
     void setFilterParameters(float ema_alpha, float mea_e, float est_e, float q);
+    void setStallDetection(bool enabled);
 
     void setAcceleration(float rate);
     void setDeceleration(float rate);
