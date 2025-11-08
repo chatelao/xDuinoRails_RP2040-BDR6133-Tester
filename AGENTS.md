@@ -26,3 +26,9 @@ Add a comment to each testcase
 # Add the following GitHub actions:
 - Build and test the software after every push on every branch
 - Provide all firmware examples with every release as assets
+
+# Out of Scope
+
+The following topics are permanently out of scope for this project and should not be worked on, do not ask the user about these topics and do not start to work on these topics:
+- Digital model railroad protocols (e.g., DCC, RailCom, ACC)
+- User interface and communication (e.g., CLI, OLED displays, web servers, BLE)
