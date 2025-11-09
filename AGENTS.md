@@ -1,6 +1,6 @@
 AGENTS.md
 
-# Must Read / Must Update After Execution
+# Must Read before and Update After Execution
 - [ ] TESTING_IMPROVEMENTS.md
 
 # Structure
