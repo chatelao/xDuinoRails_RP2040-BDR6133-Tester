@@ -16,15 +16,8 @@
  *      time the motor starts (Forward -> Reverse -> Forward).
  *
  * ## Hardware Setup
- * Connect the rotary encoder to the XIAO RP2040 as follows:
- * - Encoder CLK pin  -> D0
- * - Encoder DT pin   -> D1
- * - Encoder SW pin   -> D9
- * - Encoder + pin    -> 3.3V
- * - Encoder GND pin  -> GND
- *
- * No external pull-up resistors are needed as the microcontroller's internal
- * pull-ups are used.
+ * For detailed wiring instructions, please see the README.md file located in
+ * this same directory.
  */
 
 #include <Arduino.h>
