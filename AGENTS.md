@@ -1,5 +1,8 @@
 AGENTS.md
 
+# Must Read before and Update After Execution
+- [ ] TESTING_IMPROVEMENTS.md
+
 # Structure
 - Keep sources in “src”, exceptions are possible depending on special technologies
 
