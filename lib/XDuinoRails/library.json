@@ -13,7 +13,9 @@
   "headers": [
     "XDuinoRails.h",
     "XDuinoRails_MotorDriver.h",
-    "motor_control_hal.h",
     "pi_controller.h"
-  ]
+  ],
+  "dependencies": {
+    "xDuinoRails_MotorControl_bEMF": "*"
+  }
 }

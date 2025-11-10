@@ -11,7 +11,7 @@
 #include <vector>
 
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
-#include "motor_control_hal.h"
+#include <motor_control_hal.h>
 #endif
 
 #if defined(TESTING)
