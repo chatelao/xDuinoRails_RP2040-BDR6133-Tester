@@ -1,1 +1,5 @@
+# PlatformIO
 .pio/
+
+# Doxygen
+docs/api/

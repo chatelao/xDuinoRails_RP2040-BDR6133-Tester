@@ -7,6 +7,8 @@
 #include "SimpleKalmanFilterWrapper.h"
 #endif
 #include "pi_controller.h"
+#include <functional>
+#include <vector>
 
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
 #include "motor_control_hal.h"
@@ -21,6 +23,9 @@ unsigned long millis() {
 
 class XDuinoRails_MotorDriver_Impl {
 public:
+    using FilterCallback = std::function<float(float)>;
+    using ControllerCallback = std::function<int(float, float)>;
+
     XDuinoRails_MotorDriver_Impl(int pwmAPin, int pwmBPin, int bemfAPin, int bemfBPin);
 #if defined(TESTING)
     XDuinoRails_MotorDriver_Impl(int pwmAPin, int pwmBPin, int bemfAPin, int bemfBPin, IKalmanFilter* filter);
@@ -41,20 +46,25 @@ public:
     void resetPIController();
 
     void setPIgains(float kp, float ki);
-    void setFilterParameters(float ema_alpha, float mea_e, float est_e, float q);
+    void setFilterParameters(float mea_e, float est_e, float q);
     void setStallDetection(bool enabled);
 
-    void enableEmaFilter(bool enable);
-    void enableKalmanFilter(bool enable);
+    void setAcceleration(float rate);
+    void setDeceleration(float rate);
+    void setStartupKick(int pwm, int duration_ms);
+
+    // Filter pipeline methods
+    void clearFilters();
+    void appendEmaFilter(float alpha);
+    void appendKalmanFilter();
+    void appendCustomFilter(FilterCallback filter);
+
+    void setCustomController(ControllerCallback controller);
 
     int getCurrentPWM() const;
     void setCurrentPWM(int pwm);
 
     ControllerAction getControllerAction() const;
-
-    void setAcceleration(float rate);
-    void setDeceleration(float rate);
-    void setStartupKick(int pwm, int duration_ms);
 
 private:
     // Pin Definitions
@@ -77,10 +87,9 @@ private:
     float Ki_rangier = 0.05;
     PIController _pi_controller;
     bool _was_in_rangiermodus = false;
+    ControllerCallback _custom_controller = nullptr;
 
     // BEMF Pulse Counting
-    float EMA_ALPHA = 0.21;
-    bool _ema_filter_enabled = true;
     float BEMF_MEA_E = 2.0;
     float BEMF_EST_E = 2.0;
     float BEMF_Q = 0.01;
@@ -89,7 +98,9 @@ private:
     float _measured_speed_pps = 0.0;
     bool _last_bemf_state = false;
     IKalmanFilter* _bemfKalmanFilter;
-    bool _kalman_filter_enabled = true;
+
+    // Filter pipeline
+    std::vector<FilterCallback> _filter_pipeline;
 
     // PWM Parameters
 #if ARDUINO && !defined(USE_RP2040_LOWLEVEL) && !defined(ARDUINO_ARCH_STM32)
@@ -142,6 +153,9 @@ XDuinoRails_MotorDriver_Impl::XDuinoRails_MotorDriver_Impl(int pwmAPin, int pwmB
 #else
     _bemfKalmanFilter = nullptr;
 #endif
+    // Set up default filter pipeline
+    appendEmaFilter(0.21f);
+    appendKalmanFilter();
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || ARDUINO
     instance = this;
 #endif
@@ -178,25 +192,6 @@ void XDuinoRails_MotorDriver_Impl::begin() {
 void XDuinoRails_MotorDriver_Impl::update() {
     unsigned long current_millis_val = millis();
 
-    float elapsed_update_time_s = (current_millis_val - _last_update_ms) / 1000.0;
-    _last_update_ms = current_millis_val;
-
-
-    // Acceleration/Deceleration Ramp
-    if (_acceleration_rate > 0 && _current_speed_setpoint < _target_speed) {
-        _current_speed_setpoint += _acceleration_rate * elapsed_update_time_s;
-        if (_current_speed_setpoint > _target_speed) {
-            _current_speed_setpoint = _target_speed;
-        }
-    } else if (_deceleration_rate > 0 && _current_speed_setpoint > _target_speed) {
-        _current_speed_setpoint -= _deceleration_rate * elapsed_update_time_s;
-        if (_current_speed_setpoint < _target_speed) {
-            _current_speed_setpoint = _target_speed;
-        }
-    } else {
-        _current_speed_setpoint = _target_speed;
-    }
-
     // Speed calculation
     if (current_millis_val - _last_speed_calc_ms >= 100) {
 #if ARDUINO
@@ -215,45 +210,68 @@ void XDuinoRails_MotorDriver_Impl::update() {
         _last_speed_calc_ms = current_millis_val;
     }
 
-    // Stall detection
-    if (_stall_detection_enabled) {
-        if (_target_speed > 0 && _measured_speed_pps < stall_speed_threshold_pps) {
-            if (_stall_check_start_ms == 0) {
-                _stall_check_start_ms = current_millis_val;
-            } else if (current_millis_val - _stall_check_start_ms >= stall_timeout_ms) {
-                setTargetSpeed(0); // Stall detected, stop motor smoothly
+    if (_custom_controller) {
+        // Custom controller has full authority
+        _current_pwm = _custom_controller(_target_speed, _measured_speed_pps);
+    } else {
+        // Standard internal controller logic
+        float elapsed_update_time_s = (current_millis_val - _last_update_ms) / 1000.0;
+        _last_update_ms = current_millis_val;
+
+        // Acceleration/Deceleration Ramp
+        if (_acceleration_rate > 0 && _current_speed_setpoint < _target_speed) {
+            _current_speed_setpoint += _acceleration_rate * elapsed_update_time_s;
+            if (_current_speed_setpoint > _target_speed) {
+                _current_speed_setpoint = _target_speed;
+            }
+        } else if (_deceleration_rate > 0 && _current_speed_setpoint > _target_speed) {
+            _current_speed_setpoint -= _deceleration_rate * elapsed_update_time_s;
+            if (_current_speed_setpoint < _target_speed) {
+                _current_speed_setpoint = _target_speed;
             }
         } else {
-            _stall_check_start_ms = 0;
+            _current_speed_setpoint = _target_speed;
         }
-    }
 
-    // Handle startup kick
-    if (_is_kick_active) {
-        if (current_millis_val - _kick_start_ms < _startup_kick_duration_ms) {
-            _current_pwm = _startup_kick_pwm;
-        } else {
-            _is_kick_active = false;
-            // Reset the PI controller to ensure a clean transition from kick to closed-loop control
-            _pi_controller.reset();
+        // Stall detection
+        if (_stall_detection_enabled) {
+            if (_target_speed > 0 && _measured_speed_pps < stall_speed_threshold_pps) {
+                if (_stall_check_start_ms == 0) {
+                    _stall_check_start_ms = current_millis_val;
+                } else if (current_millis_val - _stall_check_start_ms >= stall_timeout_ms) {
+                    setTargetSpeed(0); // Stall detected, stop motor smoothly
+                }
+            } else {
+                _stall_check_start_ms = 0;
+            }
         }
-    }
 
-    // PI Controller Logic (only runs if kick is not active)
-    if (!_is_kick_active && _pi_controller_enabled) {
-        bool is_in_rangiermodus = (_current_speed_setpoint > 0 && _current_speed_setpoint <= rangiermodus_speed_threshold);
-        if (is_in_rangiermodus != _was_in_rangiermodus) {
-            _pi_controller.reset();
+        // Handle startup kick
+        if (_is_kick_active) {
+            if (current_millis_val - _kick_start_ms < _startup_kick_duration_ms) {
+                _current_pwm = _startup_kick_pwm;
+            } else {
+                _is_kick_active = false;
+                _pi_controller.reset();
+            }
         }
-        _was_in_rangiermodus = is_in_rangiermodus;
 
-        _pi_controller.setGains(is_in_rangiermodus ? Kp_rangier : Kp_normal, is_in_rangiermodus ? Ki_rangier : Ki_normal);
+        // PI Controller Logic (only runs if kick is not active)
+        if (!_is_kick_active && _pi_controller_enabled) {
+            bool is_in_rangiermodus = (_current_speed_setpoint > 0 && _current_speed_setpoint <= rangiermodus_speed_threshold);
+            if (is_in_rangiermodus != _was_in_rangiermodus) {
+                _pi_controller.reset();
+            }
+            _was_in_rangiermodus = is_in_rangiermodus;
+
+            _pi_controller.setGains(is_in_rangiermodus ? Kp_rangier : Kp_normal, is_in_rangiermodus ? Ki_rangier : Ki_normal);
 #if ARDUINO
-        int measured_speed = map(_measured_speed_pps, 0, 500, 0, 255);
+            int mapped_measured_speed = map(_measured_speed_pps, 0, 500, 0, 255);
 #else
-        int measured_speed = (int)(_measured_speed_pps / 500.0 * 255.0);
+            int mapped_measured_speed = (int)(_measured_speed_pps / 500.0 * 255.0);
 #endif
-        _current_pwm = _pi_controller.calculate(_current_speed_setpoint, measured_speed, _current_pwm);
+            _current_pwm = _pi_controller.calculate(_current_speed_setpoint, mapped_measured_speed, _current_pwm);
+        }
     }
 
 
@@ -270,7 +288,6 @@ void XDuinoRails_MotorDriver_Impl::setTargetSpeed(int speed) {
 #endif
 
     // Trigger startup kick if starting from zero and kick is configured
-    // This must be checked BEFORE the setpoint is jumped to the target.
     if (_current_speed_setpoint == 0 && _target_speed > 0 && _startup_kick_pwm > 0 && _startup_kick_duration_ms > 0) {
         _is_kick_active = true;
         _kick_start_ms = millis();
@@ -318,9 +335,8 @@ void XDuinoRails_MotorDriver_Impl::setPIgains(float kp, float ki) {
     _pi_controller.setGains(kp, ki);
 }
 
-void XDuinoRails_MotorDriver_Impl::setFilterParameters(float ema_alpha, float mea_e, float est_e, float q) {
+void XDuinoRails_MotorDriver_Impl::setFilterParameters(float mea_e, float est_e, float q) {
 #if ARDUINO
-    EMA_ALPHA = ema_alpha;
     BEMF_MEA_E = mea_e;
     BEMF_EST_E = est_e;
     BEMF_Q = q;
@@ -333,12 +349,37 @@ void XDuinoRails_MotorDriver_Impl::setStallDetection(bool enabled) {
     _stall_detection_enabled = enabled;
 }
 
-void XDuinoRails_MotorDriver_Impl::enableEmaFilter(bool enable) {
-    _ema_filter_enabled = enable;
+void XDuinoRails_MotorDriver_Impl::clearFilters() {
+    _filter_pipeline.clear();
 }
 
-void XDuinoRails_MotorDriver_Impl::enableKalmanFilter(bool enable) {
-    _kalman_filter_enabled = enable;
+void XDuinoRails_MotorDriver_Impl::appendEmaFilter(float alpha) {
+    auto ema_filter = [alpha, smoothed_value = 0.0f, initialized = false](float input) mutable -> float {
+        if (!initialized) {
+            smoothed_value = input;
+            initialized = true;
+        } else {
+            smoothed_value = (alpha * input) + ((1.0f - alpha) * smoothed_value);
+        }
+        return smoothed_value;
+    };
+    _filter_pipeline.push_back(ema_filter);
+}
+
+void XDuinoRails_MotorDriver_Impl::appendKalmanFilter() {
+    if (!_bemfKalmanFilter) return;
+    auto kalman_filter = [this](float input) -> float {
+        return _bemfKalmanFilter->updateEstimate(input);
+    };
+    _filter_pipeline.push_back(kalman_filter);
+}
+
+void XDuinoRails_MotorDriver_Impl::appendCustomFilter(FilterCallback filter) {
+    _filter_pipeline.push_back(filter);
+}
+
+void XDuinoRails_MotorDriver_Impl::setCustomController(ControllerCallback controller) {
+    _custom_controller = controller;
 }
 
 int XDuinoRails_MotorDriver_Impl::getCurrentPWM() const {
@@ -374,20 +415,12 @@ void XDuinoRails_MotorDriver_Impl::on_bemf_update_wrapper(int measured_bemf) {
 }
 
 void XDuinoRails_MotorDriver_Impl::on_bemf_update(int measured_bemf) {
-    static float smoothed_bemf = 0.0;
-    static bool filter_initialized = false;
-    if (!filter_initialized) {
-        smoothed_bemf = measured_bemf;
-        filter_initialized = true;
-    } else if (_ema_filter_enabled) {
-        smoothed_bemf = (EMA_ALPHA * measured_bemf) + ((1.0 - EMA_ALPHA) * smoothed_bemf);
-    } else {
-        smoothed_bemf = measured_bemf;
+    float filtered_bemf = measured_bemf;
+    for (const auto& filter : _filter_pipeline) {
+        filtered_bemf = filter(filtered_bemf);
     }
 
-    float kalman_filtered_bemf = _kalman_filter_enabled ? _bemfKalmanFilter->updateEstimate(smoothed_bemf) : smoothed_bemf;
-
-    bool current_bemf_state = (kalman_filtered_bemf > bemf_threshold);
+    bool current_bemf_state = (filtered_bemf > bemf_threshold);
     if (current_bemf_state && !_last_bemf_state) {
         _commutation_pulse_count++;
     }
@@ -428,27 +461,18 @@ int64_t XDuinoRails_MotorDriver_Impl::pwm_off_callback(alarm_id_t alarm_id, void
         int bemfB = analogRead(instance->_bemfBPin);
         int measured_bemf = abs(bemfA - bemfB);
 
-        static float smoothed_bemf = 0.0;
-        static bool filter_initialized = false;
-
-        if (!filter_initialized) {
-            smoothed_bemf = measured_bemf;
-            filter_initialized = true;
-        } else if (instance->_ema_filter_enabled) {
-            smoothed_bemf = (instance->EMA_ALPHA * measured_bemf) + ((1.0 - instance->EMA_ALPHA) * smoothed_bemf);
-        } else {
-            smoothed_bemf = measured_bemf;
+        float filtered_bemf = measured_bemf;
+        for (const auto& filter : instance->_filter_pipeline) {
+            filtered_bemf = filter(filtered_bemf);
         }
 
-        float kalman_filtered_bemf = instance->_kalman_filter_enabled ? instance->_bemfKalmanFilter->updateEstimate(smoothed_bemf) : smoothed_bemf;
-
-        bool current_bemf_state = (kalman_filtered_bemf > instance->bemf_threshold);
+        bool current_bemf_state = (filtered_bemf > instance->bemf_threshold);
         if (current_bemf_state && !instance->_last_bemf_state) {
             instance->_commutation_pulse_count++;
         }
         instance->_last_bemf_state = current_bemf_state;
 
-        if (instance->_pi_controller_enabled) {
+        if (instance->_custom_controller == nullptr && instance->_pi_controller_enabled) {
             bool is_in_rangiermodus = (instance->_target_speed > 0 && instance->_target_speed <= instance->rangiermodus_speed_threshold);
 
             if (is_in_rangiermodus != instance->_was_in_rangiermodus) {
@@ -461,8 +485,8 @@ int64_t XDuinoRails_MotorDriver_Impl::pwm_off_callback(alarm_id_t alarm_id, void
             } else {
                 instance->_pi_controller.setGains(instance->Kp_normal, instance->Ki_normal);
             }
-            int measured_speed = map(instance->_measured_speed_pps, 0, 500, 0, 255);
-            instance->_current_pwm = instance->_pi_controller.calculate(instance->_target_speed, measured_speed, instance->_current_pwm);
+            int mapped_measured_speed = map(instance->_measured_speed_pps, 0, 500, 0, 255);
+            instance->_current_pwm = instance->_pi_controller.calculate(instance->_target_speed, mapped_measured_speed, instance->_current_pwm);
         }
     }
     return 0;
@@ -526,20 +550,32 @@ void XDuinoRails_MotorDriver::setPIgains(float kp, float ki) {
     pImpl->setPIgains(kp, ki);
 }
 
-void XDuinoRails_MotorDriver::setFilterParameters(float ema_alpha, float mea_e, float est_e, float q) {
-    pImpl->setFilterParameters(ema_alpha, mea_e, est_e, q);
+void XDuinoRails_MotorDriver::setFilterParameters(float mea_e, float est_e, float q) {
+    pImpl->setFilterParameters(mea_e, est_e, q);
 }
 
 void XDuinoRails_MotorDriver::setStallDetection(bool enabled) {
     pImpl->setStallDetection(enabled);
 }
 
-void XDuinoRails_MotorDriver::enableEmaFilter(bool enable) {
-    pImpl->enableEmaFilter(enable);
+void XDuinoRails_MotorDriver::clearFilters() {
+    pImpl->clearFilters();
 }
 
-void XDuinoRails_MotorDriver::enableKalmanFilter(bool enable) {
-    pImpl->enableKalmanFilter(enable);
+void XDuinoRails_MotorDriver::appendEmaFilter(float alpha) {
+    pImpl->appendEmaFilter(alpha);
+}
+
+void XDuinoRails_MotorDriver::appendKalmanFilter() {
+    pImpl->appendKalmanFilter();
+}
+
+void XDuinoRails_MotorDriver::appendCustomFilter(FilterCallback filter) {
+    pImpl->appendCustomFilter(filter);
+}
+
+void XDuinoRails_MotorDriver::setCustomController(ControllerCallback controller) {
+    pImpl->setCustomController(controller);
 }
 
 int XDuinoRails_MotorDriver::getCurrentPWM() const {

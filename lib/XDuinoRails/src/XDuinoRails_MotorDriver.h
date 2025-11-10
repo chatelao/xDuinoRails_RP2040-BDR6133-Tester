@@ -6,6 +6,7 @@
 #endif
 
 #include "pi_controller.h"
+#include <functional>
 
 #if defined(TESTING)
 unsigned long millis();
@@ -17,6 +18,9 @@ class IKalmanFilter;
 
 class XDuinoRails_MotorDriver {
 public:
+    using FilterCallback = std::function<float(float)>;
+    using ControllerCallback = std::function<int(float, float)>;
+
     XDuinoRails_MotorDriver(int pwmAPin, int pwmBPin, int bemfAPin, int bemfBPin);
 #if defined(TESTING)
     XDuinoRails_MotorDriver(int pwmAPin, int pwmBPin, int bemfAPin, int bemfBPin, IKalmanFilter* filter);
@@ -38,15 +42,20 @@ public:
     void resetPIController();
 
     void setPIgains(float kp, float ki);
-    void setFilterParameters(float ema_alpha, float mea_e, float est_e, float q);
+    void setFilterParameters(float mea_e, float est_e, float q);
     void setStallDetection(bool enabled);
 
     void setAcceleration(float rate);
     void setDeceleration(float rate);
     void setStartupKick(int pwm, int duration_ms);
 
-    void enableEmaFilter(bool enable);
-    void enableKalmanFilter(bool enable);
+    // Filter pipeline methods
+    void clearFilters();
+    void appendEmaFilter(float alpha = 0.21f);
+    void appendKalmanFilter();
+    void appendCustomFilter(FilterCallback filter);
+
+    void setCustomController(ControllerCallback controller);
 
     int getCurrentPWM() const;
     void setCurrentPWM(int pwm);
