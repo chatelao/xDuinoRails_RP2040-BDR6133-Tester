@@ -158,10 +158,19 @@ Configures a "startup kick" to help overcome the motor's initial friction. It ap
 For those interested in the technical details, the library follows this control loop:
 
 1.  **BEMF Measurement:** During the "off" phase of each PWM cycle, the motor is briefly disconnected from power, and the BEMF voltage is read from the motor terminals.
-2.  **Signal Filtering:** The raw BEMF signal is passed through an Exponential Moving Average (EMA) filter and then a Kalman filter to produce a clean, stable speed reading.
-3.  **PI Control:** A Proportional-Integral (PI) controller calculates the error between the target speed and the measured speed, and then computes a new PWM value to correct for this error.
+2.  **Signal Filtering:** The raw BEMF signal is passed through a flexible processing pipeline. By default, this pipeline contains an Exponential Moving Average (EMA) filter followed by a Kalman filter, but it can be customized with any number of user-defined filter functions.
+3.  **PI Control:** A Proportional-Integral (PI) controller calculates the error between the target speed and the measured speed, and then computes a new PWM value to correct for this error. This controller can also be replaced with a custom user function.
 4.  **PWM Update:** The PWM signal sent to the motor driver is updated with the new value from the PI controller.
 
 This entire process happens automatically within the `update()` function.
+
+## Advanced Extensibility
+
+For advanced users, the library now offers a high degree of flexibility by allowing you to replace core components with your own custom logic:
+
+*   **Customizable Filter Pipeline:** The default EMA and Kalman filters can be replaced or augmented with any number of custom filter functions. You can create complex, multi-stage signal processing chains tailored to your specific motor and application.
+*   **Custom Speed Controller:** The internal PI controller, along with its associated logic for acceleration and stall detection, can be completely replaced by your own controller function. This allows you to implement any control strategy you can imagine, from a simple proportional controller to a more complex PID or fuzzy logic controller.
+
+Check out the `CustomControlLoop` example to see a practical demonstration of how to use these powerful features.
 
 ![Control Loop Diagram](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/chatelao/xDuinoRails_RP2040-BDR6133-Tester/main/docs/control_loop.puml)
