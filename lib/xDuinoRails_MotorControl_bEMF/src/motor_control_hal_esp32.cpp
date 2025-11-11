@@ -38,8 +38,7 @@ const uint32_t BEMF_MEASUREMENT_DELAY_US = 10;
 
 // Callback function to the main driver to report the measured BEMF value.
 static hal_bemf_update_callback_t bemf_callback = nullptr;
-static uint8_t g_pwm_a_pin;
-static uint8_t g_pwm_b_pin;
+
 // Pin definitions and ADC channel mappings.
 static uint8_t g_pwm_a_pin;
 static uint8_t g_pwm_b_pin;
