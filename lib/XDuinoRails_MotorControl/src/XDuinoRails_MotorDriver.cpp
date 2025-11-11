@@ -10,7 +10,7 @@
 #include <functional>
 #include <vector>
 
-#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_ESP32)
 #include <motor_control_hal.h>
 #endif
 
@@ -191,6 +191,10 @@ void XDuinoRails_MotorDriver_Impl::begin() {
 
 void XDuinoRails_MotorDriver_Impl::update() {
     unsigned long current_millis_val = millis();
+
+#if defined(ARDUINO_ARCH_ESP32)
+    hal_read_and_process_bemf();
+#endif
 
     // Speed calculation
     if (current_millis_val - _last_speed_calc_ms >= 100) {
