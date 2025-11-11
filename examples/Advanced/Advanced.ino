@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
-#include <XDuinoRails.h>
+#include <XDuinoRails_MotorControl.h>
 
 // Pin Definitions
 const int pwmAPin = D7;
