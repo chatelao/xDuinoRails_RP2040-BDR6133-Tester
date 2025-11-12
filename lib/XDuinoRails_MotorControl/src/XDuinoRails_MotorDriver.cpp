@@ -10,7 +10,7 @@
 #include <functional>
 #include <vector>
 
-#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_ESP32)
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_SAMD)
 #include <motor_control_hal.h>
 #endif
 
@@ -103,10 +103,12 @@ private:
     std::vector<FilterCallback> _filter_pipeline;
 
     // PWM Parameters
-#if ARDUINO && !defined(USE_RP2040_LOWLEVEL) && !defined(ARDUINO_ARCH_STM32)
+#if ARDUINO && !defined(USE_RP2040_LOWLEVEL) && !defined(ARDUINO_ARCH_STM32) && !defined(ARDUINO_ARCH_SAMD)
     const int pwm_frequency = 1000;
     const long pwm_period_us = 1000000 / pwm_frequency;
+#if defined(ARDUINO_ARCH_RP2040)
     struct repeating_timer _pwm_timer;
+#endif
 #endif
 
     // Global Motor & PWM State Variables
@@ -130,18 +132,20 @@ private:
     unsigned long _last_update_ms = 0;
     unsigned long _stall_check_start_ms = 0;
 
-#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD)
     static void on_bemf_update_wrapper(int measured_bemf);
     void on_bemf_update(int measured_bemf);
     static XDuinoRails_MotorDriver_Impl* instance; // Static instance for C-style callback
 #elif ARDUINO
     static XDuinoRails_MotorDriver_Impl* instance;
+#if defined(ARDUINO_ARCH_RP2040)
     static bool pwm_on_callback(struct repeating_timer *t);
     static int64_t pwm_off_callback(alarm_id_t alarm_id, void *user_data);
 #endif
+#endif
 };
 
-#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || ARDUINO
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD) || ARDUINO
 XDuinoRails_MotorDriver_Impl* XDuinoRails_MotorDriver_Impl::instance = nullptr;
 #endif
 
@@ -181,9 +185,9 @@ void XDuinoRails_MotorDriver_Impl::begin() {
     pinMode(_bemfAPin, INPUT);
     pinMode(_bemfBPin, INPUT);
 
-#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD)
     hal_motor_init(_pwmAPin, _pwmBPin, _bemfAPin, _bemfBPin, on_bemf_update_wrapper);
-#else
+#elif defined(ARDUINO_ARCH_RP2040)
     add_repeating_timer_us(pwm_period_us, pwm_on_callback, NULL, &_pwm_timer);
 #endif
 #endif
@@ -279,7 +283,7 @@ void XDuinoRails_MotorDriver_Impl::update() {
     }
 
 
-#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD)
     hal_motor_set_pwm(_current_pwm, _motor_forward);
 #endif
 }
@@ -411,7 +415,7 @@ void XDuinoRails_MotorDriver_Impl::setStartupKick(int pwm, int duration_ms) {
     _startup_kick_duration_ms = duration_ms;
 }
 
-#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32)
+#if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD)
 void XDuinoRails_MotorDriver_Impl::on_bemf_update_wrapper(int measured_bemf) {
     if (instance) {
         instance->on_bemf_update(measured_bemf);
@@ -431,7 +435,7 @@ void XDuinoRails_MotorDriver_Impl::on_bemf_update(int measured_bemf) {
     _last_bemf_state = current_bemf_state;
 }
 
-#elif ARDUINO && !defined(USE_RP2040_LOWLEVEL)
+#elif ARDUINO && !defined(USE_RP2040_LOWLEVEL) && defined(ARDUINO_ARCH_RP2040)
 
 bool XDuinoRails_MotorDriver_Impl::pwm_on_callback(struct repeating_timer *t) {
     if(instance) {
