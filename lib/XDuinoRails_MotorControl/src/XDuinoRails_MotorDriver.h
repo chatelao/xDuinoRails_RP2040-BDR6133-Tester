@@ -3,6 +3,8 @@
 
 #if ARDUINO
 #include <Arduino.h>
+#undef min
+#undef max
 #endif
 
 #include "pi_controller.h"
