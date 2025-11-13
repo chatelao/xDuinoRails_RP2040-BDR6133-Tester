@@ -16,7 +16,6 @@
     "pi_controller.h"
   ],
   "dependencies": {
-    "xDuinoRails_MotorControl_bEMF": "*",
     "denyssene/SimpleKalmanFilter": "*",
     "adafruit/Adafruit NeoPixel": "*"
   }
