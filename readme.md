@@ -164,6 +164,12 @@ For those interested in the technical details, the library follows this control 
 
 This entire process happens automatically within the `update()` function.
 
+## Hardware Abstraction Layer (HAL)
+
+To support multiple microcontrollers and enable high-performance, hardware-accelerated features, the library uses a dedicated Hardware Abstraction Layer (HAL) provided by the `xDuinoRails_MotorControl_bEMF` library. This library handles the low-level, platform-specific code for PWM generation and BEMF sensing.
+
+For a detailed explanation of how these two libraries work together, please see the [Integration Documentation](docs/INTEGRATION.md).
+
 ## Advanced Extensibility
 
 For advanced users, the library now offers a high degree of flexibility by allowing you to replace core components with your own custom logic:
