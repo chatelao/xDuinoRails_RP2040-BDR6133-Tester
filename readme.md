@@ -37,18 +37,18 @@ At its core, this library uses back-EMF (BEMF) sensing to measure the motor's ac
 This diagram shows a typical wiring setup using a XIAO SEED RP2040 and a BDR-6133 motor driver.
 
 ```
-                     +----------------------+      +----------------------+      +---------------+
-                     |  XIAO SEED RP2040    |      |     BDR-6133         |      |     Motor     |
-                     |      (Top View)      |      |    Motor Driver      |      |               |
-                     +----------------------+      +----------------------+      +---------------+
-                     | D0/A0            5v  |      |                      |      |               |
-                     | D1/A1            GND |      |                      |      |               |
-        (BEMF B) <---| D2/A2            3v3 | <----+                 OutB |=====>| B (-> bEMF B) |
-        (BEMF A) <---| D3/A3            D10 | <----+                 OutA |=====>| A (-> bEMF A) |
-        (DCC-RX) ----| D4               D9  |      |                      |      |               |
-       (ACC-ACK) ----| D5               D8  |----->| InB                  |      |               |
-    (Railcom-TX) ----| D6               D7  |----->| InA                  |      |               |
-                     +----------------------+      +----------------------+      +---------------+
+                     +----------------------+      +--------------------+      +---------------+
+                     |  XIAO SEED RP2040    |      |      BDR-6133      |      |     Motor     |
+                     |      (Top View)      |      |    Motor Driver    |      |               |
+                     +----------------------+      +--------------------+      +---------------+
+                     | D0/A0            5v  |      |                    |      |               |
+                     | D1/A1            GND |      |                    |      |               |
+        (BEMF B) <---| D2/A2            3v3 | <----+               OutB |=====>| B (-> bEMF B) |
+        (BEMF A) <---| D3/A3            D10 | <----+               OutA |=====>| A (-> bEMF A) |
+        (DCC-RX) ----| D4               D9  |      |                    |      |               |
+       (ACC-ACK) ----| D5               D8  |----->| InB                |      |               |
+    (Railcom-TX) ----| D6               D7  |----->| InA                |      |               |
+                     +----------------------+      +--------------------+      +---------------+
 ```
 
 ## Getting Started
