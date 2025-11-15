@@ -53,6 +53,8 @@ public:
     void setDeceleration(float rate);
     void setStartupKick(int pwm, int duration_ms);
 
+    void setWatchdogTimeout(unsigned long timeout_ms);
+
     // Filter pipeline methods
     void clearFilters();
     void appendEmaFilter(float alpha);
@@ -131,6 +133,8 @@ private:
     unsigned long _last_speed_calc_ms = 0;
     unsigned long _last_update_ms = 0;
     unsigned long _stall_check_start_ms = 0;
+    unsigned long _watchdog_timeout_ms = 0;
+    unsigned long _last_speed_command_ms = 0;
 
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD)
     static void on_bemf_update_wrapper(int measured_bemf);
@@ -152,6 +156,8 @@ XDuinoRails_MotorDriver_Impl* XDuinoRails_MotorDriver_Impl::instance = nullptr;
 XDuinoRails_MotorDriver_Impl::XDuinoRails_MotorDriver_Impl(int pwmAPin, int pwmBPin, int bemfAPin, int bemfBPin)
     : _pwmAPin(pwmAPin), _pwmBPin(pwmBPin), _bemfAPin(bemfAPin), _bemfBPin(bemfBPin),
       _pi_controller(Kp_normal, Ki_normal, max_speed) {
+    _last_speed_command_ms = millis();
+    _watchdog_timeout_ms = 0;
 #if ARDUINO
     _bemfKalmanFilter = new SimpleKalmanFilterWrapper(BEMF_MEA_E, BEMF_EST_E, BEMF_Q);
 #else
@@ -195,6 +201,11 @@ void XDuinoRails_MotorDriver_Impl::begin() {
 
 void XDuinoRails_MotorDriver_Impl::update() {
     unsigned long current_millis_val = millis();
+
+    // Watchdog check
+    if (_watchdog_timeout_ms > 0 && (current_millis_val - _last_speed_command_ms > _watchdog_timeout_ms)) {
+        setTargetSpeed(0);
+    }
 
 #if defined(ARDUINO_ARCH_ESP32)
     hal_read_and_process_bemf();
@@ -289,6 +300,7 @@ void XDuinoRails_MotorDriver_Impl::update() {
 }
 
 void XDuinoRails_MotorDriver_Impl::setTargetSpeed(int speed) {
+    _last_speed_command_ms = millis();
 #if ARDUINO
     _target_speed = constrain(speed, 0, max_speed);
 #else
@@ -413,6 +425,10 @@ void XDuinoRails_MotorDriver_Impl::setDeceleration(float rate) {
 void XDuinoRails_MotorDriver_Impl::setStartupKick(int pwm, int duration_ms) {
     _startup_kick_pwm = pwm;
     _startup_kick_duration_ms = duration_ms;
+}
+
+void XDuinoRails_MotorDriver_Impl::setWatchdogTimeout(unsigned long timeout_ms) {
+    _watchdog_timeout_ms = timeout_ms;
 }
 
 #if defined(USE_RP2040_LOWLEVEL) || defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_SAMD)
@@ -608,4 +624,8 @@ void XDuinoRails_MotorDriver::setDeceleration(float rate) {
 
 void XDuinoRails_MotorDriver::setStartupKick(int pwm, int duration_ms) {
     pImpl->setStartupKick(pwm, duration_ms);
+}
+
+void XDuinoRails_MotorDriver::setWatchdogTimeout(unsigned long timeout_ms) {
+    pImpl->setWatchdogTimeout(timeout_ms);
 }

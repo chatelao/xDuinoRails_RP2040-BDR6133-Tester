@@ -136,9 +136,45 @@ void test_startup_kick() {
 }
 
 
+void test_watchdog() {
+    std::cout << "--- Running Test: test_watchdog ---" << std::endl;
+    mock_millis_count = 0;
+    MockKalmanFilter* mock_filter = new MockKalmanFilter();
+    XDuinoRails_MotorDriver driver(0, 1, 2, 3, mock_filter);
+    driver.begin();
+
+    driver.setWatchdogTimeout(100); // 100ms timeout
+    driver.setTargetSpeed(150);
+    driver.update();
+
+    assert(driver.getTargetSpeed() == 150);
+
+    // Advance time by 50ms, watchdog should not trigger
+    advance_time_ms(50);
+    driver.update();
+    std::cout << "  Speed after 50ms: " << driver.getTargetSpeed() << std::endl;
+    assert(driver.getTargetSpeed() == 150);
+
+    // Reset watchdog by sending a new speed command
+    driver.setTargetSpeed(150);
+    advance_time_ms(60);
+    driver.update();
+    std::cout << "  Speed after another 60ms (with reset): " << driver.getTargetSpeed() << std::endl;
+    assert(driver.getTargetSpeed() == 150);
+
+    // Advance time by 110ms, watchdog should trigger
+    advance_time_ms(110);
+    driver.update();
+    std::cout << "  Speed after 110ms (timeout expected): " << driver.getTargetSpeed() << std::endl;
+    assert(driver.getTargetSpeed() == 0);
+
+    std::cout << "--- Test Passed: test_watchdog ---" << std::endl;
+}
+
 int main() {
     test_acceleration_deceleration();
     test_stall_detection();
     test_startup_kick();
+    test_watchdog();
     return 0;
 }
