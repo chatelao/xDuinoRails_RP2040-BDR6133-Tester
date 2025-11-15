@@ -51,6 +51,8 @@ public:
     void setDeceleration(float rate);
     void setStartupKick(int pwm, int duration_ms);
 
+    void setWatchdogTimeout(unsigned long timeout_ms);
+
     // Filter pipeline methods
     void clearFilters();
     void appendEmaFilter(float alpha = 0.21f);
