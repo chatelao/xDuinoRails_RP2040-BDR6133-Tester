@@ -1,4 +1,4 @@
-#include <XDuinoRails_MotorControl.h>
+#include "XDuinoRails_MotorControl.h"
 
 // This example demonstrates the use of the optional watchdog timer.
 //
