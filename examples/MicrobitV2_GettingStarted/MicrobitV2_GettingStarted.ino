@@ -1,4 +1,4 @@
-#include <XDuinoRails_MotorControl.h>
+#include "XDuinoRails_MotorControl.h"
 
 // This is a basic example of how to use the XDuinoRails_MotorControl library
 // with the Microbit v2.21.

@@ -21,7 +21,7 @@
  */
 
 #include <Arduino.h>
-#include <XDuinoRails_MotorDriver.h>
+#include "XDuinoRails_MotorDriver.h"
 #include <RotaryEncoder.h>
 
 // --- Pin Definitions ---
