@@ -496,22 +496,10 @@ int64_t XDuinoRails_MotorDriver_Impl::pwm_off_callback(alarm_id_t alarm_id, void
         }
         instance->_last_bemf_state = current_bemf_state;
 
-        if (instance->_custom_controller == nullptr && instance->_pi_controller_enabled) {
-            bool is_in_rangiermodus = (instance->_target_speed > 0 && instance->_target_speed <= instance->rangiermodus_speed_threshold);
-
-            if (is_in_rangiermodus != instance->_was_in_rangiermodus) {
-                instance->_pi_controller.reset();
-            }
-            instance->_was_in_rangiermodus = is_in_rangiermodus;
-
-            if (is_in_rangiermodus) {
-                instance->_pi_controller.setGains(instance->Kp_rangier, instance->Ki_rangier);
-            } else {
-                instance->_pi_controller.setGains(instance->Kp_normal, instance->Ki_normal);
-            }
-            int mapped_measured_speed = map(instance->_measured_speed_pps, 0, 500, 0, 255);
-            instance->_current_pwm = instance->_pi_controller.calculate(instance->_target_speed, mapped_measured_speed, instance->_current_pwm);
-        }
+        // Control logic is handled in the main loop (update()) to ensure thread safety
+        // and proper handling of acceleration ramps. The ISR is responsible only for
+        // IO (PWM switching and BEMF reading) and state updates (pulse counting).
+        // The next PWM cycle will use the value calculated by update() and stored in _current_pwm.
     }
     return 0;
 }

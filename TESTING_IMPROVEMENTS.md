@@ -67,3 +67,7 @@ This document outlines a plan to enhance the test coverage of the `XDuinoRails_M
     *   Stop the motor (`setTargetSpeed(0)`), then set a new target speed to trigger the kick.
     *   Wait for the kick duration to elapse.
     *   On the next `update()` cycle, assert that the PWM value is now low and based only on the proportional term, proving the integral term was cleared.
+
+## Status Update
+- Tests implemented in `test/test_native/test_motor_driver.cpp` on 2025-05-27.
+- Native tests verify PI logic, Rangiermodus, Startup Kick, and Safety features.

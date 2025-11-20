@@ -17,6 +17,7 @@
   ],
   "dependencies": {
     "denyssene/SimpleKalmanFilter": "*",
-    "adafruit/Adafruit NeoPixel": "*"
+    "adafruit/Adafruit NeoPixel": "*",
+    "xDuinoRails_MotorControl_bEMF": "https://github.com/chatelao/xDuinoRails_MotorControl_bEMF.git#main"
   }
 }
