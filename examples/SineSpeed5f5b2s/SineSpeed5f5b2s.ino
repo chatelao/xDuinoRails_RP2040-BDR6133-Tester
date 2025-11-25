@@ -15,7 +15,7 @@
  */
 
 #include <Arduino.h>
-#include <XDuinoRails_MotorDriver.h>
+#include <XDuinoRails_MotorControl.h>
 #include <math.h> // For sin()
 
 // Define Pin Connections (using XIAO SEED RP2040 defaults)

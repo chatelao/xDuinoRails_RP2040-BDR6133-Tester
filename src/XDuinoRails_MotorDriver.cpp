@@ -1,4 +1,4 @@
-#include "XDuinoRails_MotorDriver.h"
+#include "XDuinoRails_MotorControl.h"
 #if ARDUINO
 #include <Adafruit_NeoPixel.h>
 #endif
