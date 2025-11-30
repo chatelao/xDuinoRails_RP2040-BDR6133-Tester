@@ -4,7 +4,7 @@
  */
 
 #include <Arduino.h>
-#include <XDuinoRails_MotorDriver.h>
+#include <XDuinoRails_MotorControl.h>
 
 // 1. Define Pin Connections
 const int MOTOR_PWM_A_PIN = 7;

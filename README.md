@@ -1,4 +1,4 @@
-# XDuinoRails Motor Driver
+# xDuinoRails_MotorControl Library
 
 A powerful, closed-loop motor driver library for Arduino and PlatformIO, designed for controlling DC motors with high precision. This library is ideal for projects like model trains, robotics, or any application that requires smooth and accurate speed control.
 
@@ -17,24 +17,30 @@ At its core, this library uses back-EMF (BEMF) sensing to measure the motor's ac
 
 ### Arduino IDE
 
-1.  Download this repository as a `.zip` file by clicking the "Code" button and selecting "Download ZIP".
-2.  In the Arduino IDE, go to `Sketch` -> `Include Library` -> `Add .ZIP Library...`
-3.  Select the downloaded `.zip` file.
-4.  The library will now be available in your `Sketch` -> `Include Library` menu.
+**Note on Library Manager:** The instructions for installing via the Library Manager are provided for when the library is published. Until then, please use the manual installation method described below.
+
+#### Manual Installation
+
+1.  **Install Dependencies:** This library requires the `xDuinoRails_MotorControl_bEMF` library. You must install it first by downloading its repository as a ZIP file from [its GitHub page](https://github.com/chatelao/xDuinoRails_MotorControl_bEMF) and installing it in the Arduino IDE via the `Sketch -> Include Library -> Add .ZIP Library...` menu.
+2.  **Install This Library:** Download this repository as a `.zip` file by clicking the "Code" button and selecting "Download ZIP".
+3.  In the Arduino IDE, go to `Sketch` -> `Include Library` -> `Add .ZIP Library...`
+4.  Select the downloaded `.zip` file for this library.
 
 ### PlatformIO
 
-1.  Add this repository to the `lib_deps` section of your `platformio.ini` file:
-    ```ini
-    lib_deps =
-        https://github.com/chatelao/xDuinoRails_RP2040-BDR6133-Tester.git
-        denyssene/SimpleKalmanFilter
-    ```
-2.  PlatformIO will automatically download and install the library the next time you build your project.
+Add the library to your `platformio.ini` file:
+
+```ini
+lib_deps =
+    xDuinoRails_MotorControl
+    denyssene/SimpleKalmanFilter
+```
+
+PlatformIO will automatically download and install the library the next time you build your project.
 
 ## Wiring Diagram
 
-This diagram shows a typical wiring setup using a XIAO SEED RP2040 and a BDR-6133 motor driver.
+This diagram shows a typical wiring setup using a Seeed Studio XIAO RP2040 and a BDR-6133 motor driver. The pins can be changed to suit your specific board.
 
 ```
                      +----------------------+      +--------------------+      +---------------+
@@ -53,16 +59,11 @@ This diagram shows a typical wiring setup using a XIAO SEED RP2040 and a BDR-613
 
 ## Getting Started
 
-This simple example demonstrates how to get your motor up and running.
+This simple example demonstrates how to get your motor up and running. You can find this and other examples in the `File -> Examples -> xDuinoRails_MotorControl` menu in the Arduino IDE.
 
 ```cpp
-/**
- * @file getting_started.ino
- * @brief A simple example to demonstrate the basic functionality of the XDuinoRails_MotorDriver library.
- */
-
 #include <Arduino.h>
-#include <XDuinoRails_MotorDriver.h>
+#include <XDuinoRails_MotorControl.h>
 
 // 1. Define Pin Connections
 // These pins are for the XIAO SEED RP2040, but you can change them for your board.
@@ -101,8 +102,6 @@ void loop() {
   delay(100); // Delay for readability
 }
 ```
-
-You can find this and other examples in the `examples` folder of this repository.
 
 ## API Reference
 
@@ -164,19 +163,6 @@ For those interested in the technical details, the library follows this control 
 
 This entire process happens automatically within the `update()` function.
 
-## Hardware Abstraction Layer (HAL)
+For more advanced features, such as custom filter pipelines and custom controllers, please see the `Advanced` and `CustomControlLoop` examples.
 
-To support multiple microcontrollers and enable high-performance, hardware-accelerated features, the library uses a dedicated Hardware Abstraction Layer (HAL) provided by the `xDuinoRails_MotorControl_bEMF` library. This library handles the low-level, platform-specific code for PWM generation and BEMF sensing.
-
-For a detailed explanation of how these two libraries work together, please see the [Integration Documentation](docs/INTEGRATION.md).
-
-## Advanced Extensibility
-
-For advanced users, the library now offers a high degree of flexibility by allowing you to replace core components with your own custom logic:
-
-*   **Customizable Filter Pipeline:** The default EMA and Kalman filters can be replaced or augmented with any number of custom filter functions. You can create complex, multi-stage signal processing chains tailored to your specific motor and application.
-*   **Custom Speed Controller:** The internal PI controller, along with its associated logic for acceleration and stall detection, can be completely replaced by your own controller function. This allows you to implement any control strategy you can imagine, from a simple proportional controller to a more complex PID or fuzzy logic controller.
-
-Check out the `CustomControlLoop` example to see a practical demonstration of how to use these powerful features.
-
-![Control Loop Diagram](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/chatelao/xDuinoRails_RP2040-BDR6133-Tester/main/docs/control_loop.puml)
+![Control Loop Diagram](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/chatelao/xDuinoRails_MotorControl/main/docs/control_loop.puml)

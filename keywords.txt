@@ -1,0 +1,37 @@
+#######################################
+# Syntax Coloring Map For XDuinoRails_MotorControl
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+XDuinoRails_MotorDriver	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+begin	KEYWORD2
+update	KEYWORD2
+setTargetSpeed	KEYWORD2
+getTargetSpeed	KEYWORD2
+getMeasuredSpeedPPS	KEYWORD2
+getCurrentSpeedSetpoint	KEYWORD2
+setDirection	KEYWORD2
+getDirection	KEYWORD2
+enablePIController	KEYWORD2
+resetPIController	KEYWORD2
+setPIgains	KEYWORD2
+setFilterParameters	KEYWORD2
+setStallDetection	KEYWORD2
+setAcceleration	KEYWORD2
+setDeceleration	KEYWORD2
+setStartupKick	KEYWORD2
+setWatchdogTimeout	KEYWORD2
+clearFilters	KEYWORD2
+appendEmaFilter	KEYWORD2
+appendKalmanFilter	KEYWORD2
+appendCustomFilter	KEYWORD2
+setCustomController	KEYWORD2
+getCurrentPWM	KEYWORD2
+setCurrentPWM	KEYWORD2
+getControllerAction	KEYWORD2

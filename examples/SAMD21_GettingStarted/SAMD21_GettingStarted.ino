@@ -18,7 +18,7 @@
 #include <Arduino.h>
 
 // 1. Include the library
-#include <XDuinoRails_MotorDriver.h>
+#include <XDuinoRails_MotorControl.h>
 
 // 2. Define Pin Connections
 // These pins are for the Adafruit QT Py M0 (SAMD21)

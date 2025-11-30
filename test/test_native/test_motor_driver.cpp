@@ -1,4 +1,4 @@
-#include "XDuinoRails_MotorDriver.h"
+#include "XDuinoRails_MotorControl.h"
 #include "MockKalmanFilter.h"
 #include <cassert>
 #include <iostream>
